@@ -18,8 +18,8 @@ mod itypes {
 pub struct Font(itypes::FontImpl);
 
 impl Font {
-    pub fn from_bytes(bytes: &[u8]) -> Result<Self, ()> {
-        Ok(Self(itypes::FontImpl::from_bytes(bytes)?))
+    pub fn from_bytes(bytes: &[u8], face: &str) -> Result<Self, ()> {
+        Ok(Self(itypes::FontImpl::from_bytes(bytes, face)?))
     }
 
     pub fn scale(&self) -> Result<ScaledFont, ()> {

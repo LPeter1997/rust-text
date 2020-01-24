@@ -7,10 +7,12 @@ use crate::RasterizedGlyph;
 
 // Win32 type definitions
 
+type BYTE      = u8;
 type INT       = i32;
 type UINT      = u32;
 type LONG      = i32;
 type BOOL      = INT;
+type WORD      = u16;
 type DWORD     = u32;
 
 type CHAR      = i8;
@@ -66,6 +68,16 @@ extern "system" {
         hdc: HDC,
         cx : INT,
         cy : INT
+    ) -> HBITMAP;
+
+    // https://docs.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-createdibsection
+    fn CreateDIBSection(
+        hdc     : HDC              ,
+        pbmi    : *const BITMAPINFO,
+        usage   : UINT             ,
+        ppvBits : *mut *mut VOID   ,
+        hSection: HANDLE           ,
+        offset  : DWORD
     ) -> HBITMAP;
 
     // https://docs.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-selectobject
@@ -169,6 +181,8 @@ const CLIP_DEFAULT_PRECIS: DWORD    = 0;
 const ANTIALIASED_QUALITY: DWORD    = 4;
 const DEFAULT_PITCH      : DWORD    = 0;
 const FF_DONTCARE        : DWORD    = 0;
+const DIB_RGB_COLORS     : UINT     = 0;
+const BI_RGB             : DWORD    = 0;
 
 // https://docs.microsoft.com/en-us/previous-versions/dd145106(v=vs.85)
 #[repr(C)]
@@ -179,6 +193,61 @@ struct SIZE {
 type LPSIZE = *mut SIZE;
 
 impl SIZE {
+    fn new() -> Self {
+        unsafe{ std::mem::zeroed() }
+    }
+}
+
+// https://docs.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-bitmapinfo
+#[repr(C)]
+struct BITMAPINFO {
+    bmiHeader: BITMAPINFOHEADER,
+    bmiColors: [RGBQUAD; 1]    ,
+}
+
+impl BITMAPINFO {
+    fn new() -> Self {
+        Self{
+            bmiHeader: BITMAPINFOHEADER::new(),
+            bmiColors: [RGBQUAD::new()],
+        }
+    }
+}
+
+// https://docs.microsoft.com/en-us/previous-versions/dd183376(v=vs.85)
+#[repr(C)]
+struct BITMAPINFOHEADER {
+    biSize         : DWORD,
+    biWidth        : LONG ,
+    biHeight       : LONG ,
+    biPlanes       : WORD ,
+    biBitCount     : WORD ,
+    biCompression  : DWORD,
+    biSizeImage    : DWORD,
+    biXPelsPerMeter: LONG ,
+    biYPelsPerMeter: LONG ,
+    biClrUsed      : DWORD,
+    biClrImportant : DWORD,
+}
+
+impl BITMAPINFOHEADER {
+    fn new() -> Self {
+        let mut result: Self = unsafe{ std::mem::zeroed() };
+        result.biSize = std::mem::size_of::<Self>() as _;
+        result
+    }
+}
+
+// https://docs.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-rgbquad
+#[repr(C)]
+struct RGBQUAD {
+    rgbBlue    : BYTE,
+    rgbGreen   : BYTE,
+    rgbRed     : BYTE,
+    rgbReserved: BYTE,
+}
+
+impl RGBQUAD {
     fn new() -> Self {
         unsafe{ std::mem::zeroed() }
     }
@@ -203,10 +272,11 @@ fn utf8_to_utf16(s: &str) -> Box<[WCHAR]> {
 
 pub struct Win32Font {
     resource_handle: HANDLE,
+    face: String,
 }
 
 impl Win32Font {
-    pub fn from_bytes(bytes: &[u8]) -> Result<Self, ()> {
+    pub fn from_bytes(bytes: &[u8], face: &str) -> Result<Self, ()> {
         let mut nfonts: DWORD = 0;
         let resource_handle = unsafe{ AddFontMemResourceEx(bytes.as_ptr() as _, bytes.len() as _, std::ptr::null_mut(), &mut nfonts) };
         if resource_handle == std::ptr::null_mut() {
@@ -214,11 +284,12 @@ impl Win32Font {
         }
         Ok(Self{
             resource_handle,
+            face: face.into(),
         })
     }
 
     pub fn scale(&self) -> Result<Win32ScaledFont, ()> {
-        Win32ScaledFont::create(self.resource_handle)
+        Win32ScaledFont::create(self.resource_handle, &self.face)
     }
 }
 
@@ -239,14 +310,13 @@ pub struct Win32ScaledFont {
 }
 
 impl Win32ScaledFont {
-    fn create(res: HANDLE) -> Result<Win32ScaledFont, ()> {
+    fn create(res: HANDLE, face: &str) -> Result<Win32ScaledFont, ()> {
         // TODO: Use guards?
         // Create font
         // TODO: Actual size
-        // TODO: Name
         let font_handle = unsafe{ CreateFontW(128, 0, 0, 0, FW_NORMAL, 0, 0, 0,
             DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY,
-            DEFAULT_PITCH | FF_DONTCARE, utf8_to_utf16("Austine Demo").as_ptr()) };
+            DEFAULT_PITCH | FF_DONTCARE, utf8_to_utf16(face).as_ptr()) };
         if font_handle == std::ptr::null_mut() {
             return Err(());
         }
@@ -295,7 +365,19 @@ impl Win32ScaledFont {
             return true;
         }
         // Need to resize
-        let bitmap = unsafe{ CreateCompatibleBitmap(self.dc, width as INT, height as INT) };
+        let mut info = BITMAPINFO::new();
+        info.bmiHeader.biWidth = width as _;
+        info.bmiHeader.biHeight = height as _;
+        info.bmiHeader.biPlanes = 1;
+        info.bmiHeader.biBitCount = 32;
+        info.bmiHeader.biCompression = BI_RGB;
+        info.bmiHeader.biSizeImage = 0;
+        info.bmiHeader.biXPelsPerMeter = 0;
+        info.bmiHeader.biYPelsPerMeter = 0;
+        info.bmiHeader.biClrUsed = 0;
+        info.bmiHeader.biClrImportant = 0;
+        let mut bits: PVOID = std::ptr::null_mut();
+        let bitmap = unsafe{ CreateDIBSection(self.dc, &info, DIB_RGB_COLORS, &mut bits, std::ptr::null_mut(), 0) };
         if bitmap == std::ptr::null_mut() {
             return false;
         }
