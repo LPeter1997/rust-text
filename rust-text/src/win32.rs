@@ -304,6 +304,7 @@ pub struct Win32ScaledFont {
 
     dc         : HDC    ,
     bitmap     : HBITMAP,
+    buffer     : *const COLORREF,
 
     buff_w     : usize  ,
     buff_h     : usize  ,
@@ -353,6 +354,7 @@ impl Win32ScaledFont {
 
             dc,
             bitmap,
+            buffer: std::ptr::null(),
 
             buff_w: 0,
             buff_h: 0,
@@ -391,6 +393,7 @@ impl Win32ScaledFont {
         self.bitmap = bitmap;
         self.buff_w = width;
         self.buff_h = height;
+        self.buffer = bits as _;
         true
     }
 
@@ -428,7 +431,8 @@ impl Win32ScaledFont {
         for y in 0..height {
             let yoff = (y * width) as usize;
             for x in 0..width {
-                let pixel = unsafe{ GetPixel(self.dc, x, y) };
+                //let pixel = unsafe{ GetPixel(self.dc, x, y) };
+                let pixel = unsafe{ *self.buffer.offset((self.buff_w * y as usize) as isize + x as isize) };
                 data[yoff + x as usize] = (pixel & 0xff) as u8;
             }
         }
