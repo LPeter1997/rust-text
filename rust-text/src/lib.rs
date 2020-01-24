@@ -18,8 +18,8 @@ mod itypes {
 pub struct Font(itypes::FontImpl);
 
 impl Font {
-    pub fn from_bytes() -> Result<Self, ()> {
-        Ok(Self(itypes::FontImpl::from_bytes()?))
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, ()> {
+        Ok(Self(itypes::FontImpl::from_bytes(bytes)?))
     }
 
     pub fn scale(&self) -> Result<ScaledFont, ()> {
@@ -31,13 +31,13 @@ impl Font {
 pub struct ScaledFont(itypes::ScaledFontImpl);
 
 impl ScaledFont {
-    pub fn render_glyph(&mut self, codepoint: char) -> Result<RenderedGlyph, ()> {
-        self.0.render_glyph(codepoint)
+    pub fn rasterize_glyph(&mut self, codepoint: char) -> Result<RasterizedGlyph, ()> {
+        self.0.rasterize_glyph(codepoint)
     }
 }
 
-/// Represents a glyph that has been rendered into a byte array.
-pub struct RenderedGlyph {
+/// Represents a glyph that has been rasterized into a byte array.
+pub struct RasterizedGlyph {
     /// Width of the bitmap in pixels.
     pub width: usize,
     /// Height of the bitmap in pixels.

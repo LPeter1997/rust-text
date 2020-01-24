@@ -3,36 +3,41 @@
 
 #![cfg(target_os = "windows")]
 
-use crate::RenderedGlyph;
+use crate::RasterizedGlyph;
 
 // Win32 type definitions
 
-type INT      = i32;
-type UINT     = u32;
-type LONG     = i32;
-type BOOL     = INT;
-type DWORD    = u32;
+type INT       = i32;
+type UINT      = u32;
+type LONG      = i32;
+type BOOL      = INT;
+type DWORD     = u32;
 
-type CHAR     = i8;
-type WCHAR    = i16;
-type LPCWSTR  = *const WCHAR;
-type LPCSTR   = *const CHAR;
-type LPWSTR   = *mut WCHAR;
+type CHAR      = i8;
+type WCHAR     = i16;
+type LPCWSTR   = *const WCHAR;
+type LPCSTR    = *const CHAR;
+type LPWSTR    = *mut WCHAR;
 
-type VOID     = std::ffi::c_void;
-type PVOID    = *mut VOID;
-type LPVOID   = PVOID;
+type VOID      = std::ffi::c_void;
+type PVOID     = *mut VOID;
+type LPVOID    = PVOID;
 
-type HANDLE   = PVOID;
-type HDC      = HANDLE;
-type HBITMAP  = HANDLE;
-type HGDIOBJ  = HANDLE;
+type HANDLE    = PVOID;
+type HDC       = HANDLE;
+type HBITMAP   = HANDLE;
+type HGDIOBJ   = HANDLE;
+type HRSRC     = HANDLE;
+type HFONT     = HANDLE;
+type HINSTANCE = HANDLE;
+type HMODULE   = HINSTANCE;
 
-type COLORREF = DWORD;
+type COLORREF  = DWORD;
 
 /// Kernel32 bindings.
 #[link(name = "kernel32")]
 extern "system" {
+    // https://docs.microsoft.com/en-us/windows/win32/api/stringapiset/nf-stringapiset-multibytetowidechar
     fn MultiByteToWideChar(
         CodePage      : UINT  ,
         dwFlags       : DWORD ,
@@ -73,6 +78,37 @@ extern "system" {
     fn DeleteObject(
         ho: HGDIOBJ
     ) -> BOOL;
+
+    // https://docs.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-addfontmemresourceex
+    fn AddFontMemResourceEx(
+        pFileView: PVOID     ,
+        cjSize   : DWORD     ,
+        pvResrved: PVOID     ,
+        pNumFonts: *mut DWORD
+    ) -> HANDLE;
+
+    // https://docs.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-removefontmemresourceex
+    fn RemoveFontMemResourceEx(
+        h: HANDLE
+    ) -> BOOL;
+
+    // https://docs.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-createfontw
+    fn CreateFontW(
+        cHeight        : INT,
+        cWidth         : INT,
+        cEscapement    : INT,
+        cOrientation   : INT,
+        cWeight        : INT,
+        bItalic        : DWORD,
+        bUnderline     : DWORD,
+        bStrikeOut     : DWORD,
+        iCharSet       : DWORD,
+        iOutPrecision  : DWORD,
+        iClipPrecision : DWORD,
+        iQuality       : DWORD,
+        iPitchAndFamily: DWORD,
+        pszFaceName    : LPCWSTR
+    ) -> HFONT;
 
     // https://docs.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-getpixel
     fn GetPixel(
@@ -122,10 +158,17 @@ extern "system" {
 }
 
 // Used constants from Win32
-const CP_UTF8    : UINT     = 65001;
-const BLACKNESS  : DWORD    = 66;
-const CLR_INVALID: COLORREF = 4294967295;
-const TRANSPARENT: INT      = 1;
+const CP_UTF8            : UINT     = 65001;
+const BLACKNESS          : DWORD    = 66;
+const CLR_INVALID        : COLORREF = 4294967295;
+const TRANSPARENT        : INT      = 1;
+const FW_NORMAL          : INT      = 400;
+const DEFAULT_CHARSET    : DWORD    = 1;
+const OUT_DEFAULT_PRECIS : DWORD    = 0;
+const CLIP_DEFAULT_PRECIS: DWORD    = 0;
+const ANTIALIASED_QUALITY: DWORD    = 4;
+const DEFAULT_PITCH      : DWORD    = 0;
+const FF_DONTCARE        : DWORD    = 0;
 
 // https://docs.microsoft.com/en-us/previous-versions/dd145106(v=vs.85)
 #[repr(C)]
@@ -158,48 +201,86 @@ fn utf8_to_utf16(s: &str) -> Box<[WCHAR]> {
 
 // Implementation of the font API
 
-pub struct Win32Font { }
+pub struct Win32Font {
+    resource_handle: HANDLE,
+}
 
 impl Win32Font {
-    pub fn from_bytes() -> Result<Self, ()> {
-        Ok(Self{})
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, ()> {
+        let mut nfonts: DWORD = 0;
+        let resource_handle = unsafe{ AddFontMemResourceEx(bytes.as_ptr() as _, bytes.len() as _, std::ptr::null_mut(), &mut nfonts) };
+        if resource_handle == std::ptr::null_mut() {
+            return Err(());
+        }
+        Ok(Self{
+            resource_handle,
+        })
     }
 
     pub fn scale(&self) -> Result<Win32ScaledFont, ()> {
-        Win32ScaledFont::create()
+        Win32ScaledFont::create(self.resource_handle)
+    }
+}
+
+impl Drop for Win32Font {
+    fn drop(&mut self) {
+        unsafe{ RemoveFontMemResourceEx(self.resource_handle) };
     }
 }
 
 pub struct Win32ScaledFont {
-    dc    : HDC    ,
-    bitmap: HBITMAP,
+    font_handle: HFONT  ,
 
-    buff_w: usize  ,
-    buff_h: usize  ,
+    dc         : HDC    ,
+    bitmap     : HBITMAP,
+
+    buff_w     : usize  ,
+    buff_h     : usize  ,
 }
 
 impl Win32ScaledFont {
-    fn create() -> Result<Win32ScaledFont, ()> {
+    fn create(res: HANDLE) -> Result<Win32ScaledFont, ()> {
+        // TODO: Use guards?
+        // Create font
+        // TODO: Actual size
+        // TODO: Name
+        let font_handle = unsafe{ CreateFontW(128, 0, 0, 0, FW_NORMAL, 0, 0, 0,
+            DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY,
+            DEFAULT_PITCH | FF_DONTCARE, utf8_to_utf16("Austine Demo").as_ptr()) };
+        if font_handle == std::ptr::null_mut() {
+            return Err(());
+        }
         // Create Device Context
         let dc = unsafe{ CreateCompatibleDC(std::ptr::null_mut()) };
         if dc == std::ptr::null_mut() {
+            unsafe{ DeleteObject(font_handle) };
+            return Err(());
+        }
+        // Select the font for the Device Context
+        if unsafe{ SelectObject(dc, font_handle) } == std::ptr::null_mut() {
+            unsafe{ DeleteObject(font_handle) };
+            unsafe{ DeleteDC(dc) };
             return Err(());
         }
         // Create bitmap
         // TODO: Size
         let bitmap = unsafe{ CreateCompatibleBitmap(dc, 0, 0) };
         if bitmap == std::ptr::null_mut() {
+            unsafe{ DeleteObject(font_handle) };
             unsafe{ DeleteDC(dc) };
             return Err(());
         }
         // Select the bitmap for the Device Context
         if unsafe{ SelectObject(dc, bitmap) } == std::ptr::null_mut() {
+            unsafe{ DeleteObject(font_handle) };
             unsafe{ DeleteObject(bitmap) };
             unsafe{ DeleteDC(dc) };
             return Err(());
         }
         // We succeeded in creating everything
         Ok(Win32ScaledFont{
+            font_handle,
+
             dc,
             bitmap,
 
@@ -231,7 +312,7 @@ impl Win32ScaledFont {
         true
     }
 
-    pub fn render_glyph(&mut self, codepoint: char) -> Result<RenderedGlyph, ()> {
+    pub fn rasterize_glyph(&mut self, codepoint: char) -> Result<RasterizedGlyph, ()> {
         // Convert to UTF16
         let utf16str = utf8_to_utf16(&format!("{}", codepoint));
         // Get coordinates
@@ -270,7 +351,7 @@ impl Win32ScaledFont {
             }
         }
         // We succeeded
-        Ok(RenderedGlyph{
+        Ok(RasterizedGlyph{
             width: width as usize,
             height: height as usize,
             data,
@@ -280,6 +361,7 @@ impl Win32ScaledFont {
 
 impl Drop for Win32ScaledFont {
     fn drop(&mut self) {
+        unsafe{ DeleteObject(self.font_handle) };
         unsafe{ DeleteObject(self.bitmap) };
         unsafe{ DeleteDC(self.dc) };
     }
