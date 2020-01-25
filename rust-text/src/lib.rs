@@ -1,4 +1,7 @@
 
+#[macro_use]
+mod parse;
+mod ttf;
 mod win32;
 
 // Import underlying types.
@@ -44,4 +47,9 @@ pub struct RasterizedGlyph {
     pub height: usize,
     /// The bitmap data itself (row-major, grayscale, one byte per pixel).
     pub data: Box<[u8]>,
+}
+
+// TODO: Remove, just for testing
+pub fn parse_ttf(bytes: &[u8]) {
+    ttf::parse_ttf(bytes);
 }
