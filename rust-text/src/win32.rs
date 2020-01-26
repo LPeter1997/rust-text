@@ -98,8 +98,15 @@ extern "system" {
     fn AddFontResourceExW(
         name: LPCWSTR,
         fl  : DWORD  ,
-        pdv : PVOID  ,
+        res : PVOID
     ) -> INT;
+
+    // https://docs.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-removefontresourceexw
+    fn RemoveFontResourceExW(
+        name: LPCWSTR,
+        fl  : DWORD  ,
+        pdv : PVOID
+    ) -> BOOL;
 
     // https://docs.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-addfontmemresourceex
     fn AddFontMemResourceEx(
@@ -285,6 +292,8 @@ fn utf8_to_utf16(s: &str) -> Box<[WCHAR]> {
 
 pub struct Win32Font {
     meta: FontFile,
+    fname: String,
+    fname16: Box<[WCHAR]>,
 }
 
 impl Win32Font {
@@ -294,24 +303,29 @@ impl Win32Font {
         // Write to file so windows can safely load it as a resource
         // TODO: Some true random name?
         let fname = format!("{}.{}", "_temp", meta.get_extension());
-        let mut buff = File::create(&fname).unwrap(); // TODO
-        let mut pos = 0;
-        while pos < bytes.len() {
-            let bytes_written = buff.write(&bytes[pos..]).unwrap(); // TODO
-            pos += bytes_written;
+        // Scope the write so the file gets closed
+        {
+            let mut buff = File::create(&fname).unwrap(); // TODO
+            let mut pos = 0;
+            while pos < bytes.len() {
+                let bytes_written = buff.write(&bytes[pos..]).unwrap(); // TODO
+                pos += bytes_written;
+            }
         }
         // Load resource
-        let added_fonts = unsafe{ AddFontResourceExW(utf8_to_utf16(&fname).as_ptr(), FR_PRIVATE, std::ptr::null_mut()) };
+        let fname16 = utf8_to_utf16(&fname);
+        let added_fonts = unsafe{ AddFontResourceExW(fname16.as_ptr(), FR_PRIVATE, std::ptr::null_mut()) };
         if added_fonts == 0 {
-            println!("NULLA");
+            unsafe{ RemoveFontResourceExW(fname16.as_ptr(), FR_PRIVATE, std::ptr::null_mut()) };
             // Remove the file, but don't escalate errors!
+            let _ = std::fs::remove_file(&fname);
             return Err(());
         }
-        // Delete file
-        std::fs::remove_file(&fname).unwrap();
         // Done
         Ok(Self{
             meta,
+            fname,
+            fname16,
         })
     }
 
@@ -332,8 +346,8 @@ impl Win32Font {
 
 impl Drop for Win32Font {
     fn drop(&mut self) {
-        //unsafe{ RemoveFontMemResourceEx(self.resource_handle) };
-        // TODO: Remember filename and call RemoveFontResourceExW?
+        unsafe{ RemoveFontResourceExW(self.fname16.as_ptr(), FR_PRIVATE, std::ptr::null_mut()) };
+        let _ = std::fs::remove_file(&self.fname);
     }
 }
 
@@ -484,7 +498,7 @@ impl Win32ScaledFontFace {
         let mut data = vec![0u8; (width * height) as usize].into_boxed_slice();
         // Copy the data to the buffer
         for y in 0..height {
-            let yoff = (y * width) as usize;
+            let yoff = ((height - y - 1) * width) as usize;
             for x in 0..width {
                 //let pixel = unsafe{ GetPixel(self.dc, x, y) };
                 let pixel = unsafe{ *self.buffer.offset((self.buff_w * y as usize) as isize + x as isize) };
