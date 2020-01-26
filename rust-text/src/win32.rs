@@ -286,6 +286,41 @@ fn utf8_to_utf16(s: &str) -> Box<[WCHAR]> {
     res.into_boxed_slice()
 }
 
+/// A wrapper type for a GDI DeviceContext.
+struct DeviceContext(HDC);
+
+impl DeviceContext {
+    fn is_err(&self) -> bool { self.0.is_null() }
+
+    fn select(&self, obj: &GdiObject) -> bool {
+        !unsafe{ SelectObject(self.0, obj.0) }.is_null()
+    }
+}
+
+impl Drop for DeviceContext {
+    fn drop(&mut self) {
+        if self.0 != std::ptr::null_mut() {
+            unsafe{ DeleteDC(self.0) };
+        }
+    }
+}
+
+/// A wrapper type for GDI logical resources that are destroyed using
+/// DeleteObject.
+struct GdiObject(HGDIOBJ);
+
+impl GdiObject {
+    fn is_err(&self) -> bool { self.0.is_null() }
+}
+
+impl Drop for GdiObject {
+    fn drop(&mut self) {
+        if self.0 != std::ptr::null_mut() {
+            unsafe{ DeleteObject(self.0) };
+        }
+    }
+}
+
 // Implementation of the font API
 
 // Font
@@ -370,61 +405,51 @@ impl Win32FontFace {
 // Scaled font face
 
 pub struct Win32ScaledFontFace {
-    font_handle: HFONT          ,
-    dc         : HDC            ,
-    bitmap     : HBITMAP        ,
+    dc    : DeviceContext,
+    bitmap: GdiObject    ,
+    font  : GdiObject    ,
 
-    buffer     : *const COLORREF,
-    buff_w     : usize          ,
-    buff_h     : usize          ,
+    buffer: *const COLORREF,
+    buff_w: usize          ,
+    buff_h: usize          ,
 }
 
 impl Win32ScaledFontFace {
     fn create(face: &str) -> Result<Self, ()> {
-        // TODO: Use guards?
-        // Create font
-        // TODO: Actual size
-        let font_handle = unsafe{ CreateFontW(128, 0, 0, 0, FW_NORMAL, 0, 0, 0,
-            DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY,
-            DEFAULT_PITCH | FF_DONTCARE, utf8_to_utf16(face).as_ptr()) };
-        if font_handle == std::ptr::null_mut() {
+        // Create Device Context
+        let dc = DeviceContext(unsafe{ CreateCompatibleDC(std::ptr::null_mut()) });
+        if dc.is_err() {
             return Err(());
         }
-        // Create Device Context
-        let dc = unsafe{ CreateCompatibleDC(std::ptr::null_mut()) };
-        if dc == std::ptr::null_mut() {
-            unsafe{ DeleteObject(font_handle) };
+        // Create font
+        // TODO: Actual size
+        let font = GdiObject(unsafe{ CreateFontW(128, 0, 0, 0, FW_NORMAL, 0, 0, 0,
+            DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY,
+            DEFAULT_PITCH | FF_DONTCARE, utf8_to_utf16(face).as_ptr()) });
+        if font.is_err() {
             return Err(());
         }
         // Select the font for the Device Context
-        if unsafe{ SelectObject(dc, font_handle) } == std::ptr::null_mut() {
-            unsafe{ DeleteObject(font_handle) };
-            unsafe{ DeleteDC(dc) };
+        if !dc.select(&font) {
             return Err(());
         }
         // Create bitmap
         // TODO: Size
-        let bitmap = unsafe{ CreateCompatibleBitmap(dc, 0, 0) };
-        if bitmap == std::ptr::null_mut() {
-            unsafe{ DeleteObject(font_handle) };
-            unsafe{ DeleteDC(dc) };
+        let bitmap = GdiObject(unsafe{ CreateCompatibleBitmap(dc.0, 0, 0) });
+        if bitmap.is_err() {
             return Err(());
         }
         // Select the bitmap for the Device Context
-        if unsafe{ SelectObject(dc, bitmap) } == std::ptr::null_mut() {
-            unsafe{ DeleteObject(font_handle) };
-            unsafe{ DeleteObject(bitmap) };
-            unsafe{ DeleteDC(dc) };
+        if !dc.select(&bitmap) {
             return Err(());
         }
         // We succeeded in creating everything
         Ok(Self{
-            font_handle,
-
             dc,
             bitmap,
-            buffer: std::ptr::null(),
+            font,
 
+            buffer: std::ptr::null(),
             buff_w: 0,
             buff_h: 0,
         })
@@ -448,17 +473,15 @@ impl Win32ScaledFontFace {
         info.bmiHeader.biClrUsed = 0;
         info.bmiHeader.biClrImportant = 0;
         let mut bits: PVOID = std::ptr::null_mut();
-        let bitmap = unsafe{ CreateDIBSection(self.dc, &info, DIB_RGB_COLORS, &mut bits, std::ptr::null_mut(), 0) };
-        if bitmap == std::ptr::null_mut() {
+        let bitmap = GdiObject(unsafe{ CreateDIBSection(self.dc.0, &info, DIB_RGB_COLORS, &mut bits, std::ptr::null_mut(), 0) });
+        if bitmap.is_err() {
             return false;
         }
         // Select the bitmap for the Device Context
-        if unsafe{ SelectObject(self.dc, bitmap) } == std::ptr::null_mut() {
-            unsafe{ DeleteObject(bitmap) };
+        if !self.dc.select(&bitmap) {
             return false;
         }
         // Succeeded, delete old bitmap and swap
-        unsafe{ DeleteObject(self.bitmap) };
         self.bitmap = bitmap;
         self.buff_w = width;
         self.buff_h = height;
@@ -471,7 +494,7 @@ impl Win32ScaledFontFace {
         let utf16str = utf8_to_utf16(&format!("{}", codepoint));
         // Get coordinates
         let mut size = SIZE::new();
-        if unsafe{ GetTextExtentPoint32W(self.dc, utf16str.as_ptr(), utf16str.len() as _, &mut size) } == 0 {
+        if unsafe{ GetTextExtentPoint32W(self.dc.0, utf16str.as_ptr(), utf16str.len() as _, &mut size) } == 0 {
             return Err(());
         }
         let width = size.cx;
@@ -481,17 +504,17 @@ impl Win32ScaledFontFace {
             return Err(());
         }
         // Set clear behavior
-        if unsafe{ SetBkMode(self.dc, TRANSPARENT) } == 0 {
+        if unsafe{ SetBkMode(self.dc.0, TRANSPARENT) } == 0 {
             return Err(());
         }
         // Clear the bitmap
-        unsafe{ PatBlt(self.dc, 0, 0, width, height, BLACKNESS) };
+        unsafe{ PatBlt(self.dc.0, 0, 0, width, height, BLACKNESS) };
         // Set text color
-        if unsafe{ SetTextColor(self.dc, 0x00ffffff) } == CLR_INVALID {
+        if unsafe{ SetTextColor(self.dc.0, 0x00ffffff) } == CLR_INVALID {
             return Err(());
         }
         // Render to bitmap
-        if unsafe{ TextOutW(self.dc, 0, 0, utf16str.as_ptr(), utf16str.len() as _) } == 0 {
+        if unsafe{ TextOutW(self.dc.0, 0, 0, utf16str.as_ptr(), utf16str.len() as _) } == 0 {
             return Err(());
         }
         // Create the buffer
@@ -511,13 +534,5 @@ impl Win32ScaledFontFace {
             height: height as usize,
             data,
         })
-    }
-}
-
-impl Drop for Win32ScaledFontFace {
-    fn drop(&mut self) {
-        unsafe{ DeleteObject(self.font_handle) };
-        unsafe{ DeleteObject(self.bitmap) };
-        unsafe{ DeleteDC(self.dc) };
     }
 }
