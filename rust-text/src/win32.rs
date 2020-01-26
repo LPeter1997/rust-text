@@ -7,269 +7,7 @@ use std::io::prelude::*;
 use std::fs::File;
 use crate::RasterizedGlyph;
 use crate::font_file::FontFile;
-
-// Win32 type definitions
-
-type BYTE      = u8;
-type INT       = i32;
-type UINT      = u32;
-type LONG      = i32;
-type BOOL      = INT;
-type WORD      = u16;
-type DWORD     = u32;
-
-type CHAR      = i8;
-type WCHAR     = i16;
-type LPCWSTR   = *const WCHAR;
-type LPCSTR    = *const CHAR;
-type LPWSTR    = *mut WCHAR;
-
-type VOID      = std::ffi::c_void;
-type PVOID     = *mut VOID;
-type LPVOID    = PVOID;
-
-type HANDLE    = PVOID;
-type HDC       = HANDLE;
-type HBITMAP   = HANDLE;
-type HGDIOBJ   = HANDLE;
-type HRSRC     = HANDLE;
-type HFONT     = HANDLE;
-type HINSTANCE = HANDLE;
-type HMODULE   = HINSTANCE;
-
-type COLORREF  = DWORD;
-
-/// Kernel32 bindings.
-#[link(name = "kernel32")]
-extern "system" {
-    // https://docs.microsoft.com/en-us/windows/win32/api/stringapiset/nf-stringapiset-multibytetowidechar
-    fn MultiByteToWideChar(
-        CodePage      : UINT  ,
-        dwFlags       : DWORD ,
-        lpMultiByteStr: LPCSTR,
-        cbMultiByte   : INT   ,
-        lpWideCharStr : LPWSTR,
-        cchWideChar   : INT
-    ) -> INT;
-}
-
-/// Gdi32 bindings.
-#[link(name = "gdi32")]
-extern "system" {
-    // https://docs.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-createcompatibledc
-    fn CreateCompatibleDC(
-        hdc: HDC
-    ) -> HDC;
-
-    // https://docs.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-deletedc
-    fn DeleteDC(
-        hdc: HDC
-    ) -> BOOL;
-
-    // https://docs.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-createcompatiblebitmap
-    fn CreateCompatibleBitmap(
-        hdc: HDC,
-        cx : INT,
-        cy : INT
-    ) -> HBITMAP;
-
-    // https://docs.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-createdibsection
-    fn CreateDIBSection(
-        hdc     : HDC              ,
-        pbmi    : *const BITMAPINFO,
-        usage   : UINT             ,
-        ppvBits : *mut *mut VOID   ,
-        hSection: HANDLE           ,
-        offset  : DWORD
-    ) -> HBITMAP;
-
-    // https://docs.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-selectobject
-    fn SelectObject(
-        hdc: HDC    ,
-        h  : HGDIOBJ
-    ) -> HGDIOBJ;
-
-    // https://docs.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-deleteobject
-    fn DeleteObject(
-        ho: HGDIOBJ
-    ) -> BOOL;
-
-    // https://docs.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-addfontresourcew
-    fn AddFontResourceExW(
-        name: LPCWSTR,
-        fl  : DWORD  ,
-        res : PVOID
-    ) -> INT;
-
-    // https://docs.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-removefontresourceexw
-    fn RemoveFontResourceExW(
-        name: LPCWSTR,
-        fl  : DWORD  ,
-        pdv : PVOID
-    ) -> BOOL;
-
-    // https://docs.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-addfontmemresourceex
-    fn AddFontMemResourceEx(
-        pFileView: PVOID     ,
-        cjSize   : DWORD     ,
-        pvResrved: PVOID     ,
-        pNumFonts: *mut DWORD
-    ) -> HANDLE;
-
-    // https://docs.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-removefontmemresourceex
-    fn RemoveFontMemResourceEx(
-        h: HANDLE
-    ) -> BOOL;
-
-    // https://docs.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-createfontw
-    fn CreateFontW(
-        cHeight        : INT,
-        cWidth         : INT,
-        cEscapement    : INT,
-        cOrientation   : INT,
-        cWeight        : INT,
-        bItalic        : DWORD,
-        bUnderline     : DWORD,
-        bStrikeOut     : DWORD,
-        iCharSet       : DWORD,
-        iOutPrecision  : DWORD,
-        iClipPrecision : DWORD,
-        iQuality       : DWORD,
-        iPitchAndFamily: DWORD,
-        pszFaceName    : LPCWSTR
-    ) -> HFONT;
-
-    // https://docs.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-getpixel
-    fn GetPixel(
-        hdc: HDC,
-        x  : INT,
-        y  : INT
-    ) -> COLORREF;
-
-    // https://docs.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-gettextextentpoint32w
-    fn GetTextExtentPoint32W(
-        hdc     : HDC    ,
-        lpString: LPCWSTR,
-        c       : INT    ,
-        psizl   : LPSIZE ,
-    ) -> BOOL;
-
-    // https://docs.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-settextcolor
-    fn SetTextColor(
-        hdc  : HDC     ,
-        color: COLORREF
-    ) -> COLORREF;
-
-    // https://docs.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-textoutw
-    fn TextOutW(
-        hdc     : HDC    ,
-        x       : INT    ,
-        y       : INT    ,
-        lpString: LPCWSTR,
-        c       : INT
-    ) -> BOOL;
-
-    // https://docs.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-patblt
-    fn PatBlt(
-        hdc: HDC,
-        x  : INT,
-        y  : INT,
-        w  : INT,
-        h  : INT,
-        rop: DWORD
-    ) -> BOOL;
-
-    // https://docs.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-setbkmode
-    fn SetBkMode(
-        hdc : HDC,
-        mode: INT
-    ) -> INT;
-}
-
-// Used constants from Win32
-const CP_UTF8            : UINT     = 65001;
-const BLACKNESS          : DWORD    = 66;
-const CLR_INVALID        : COLORREF = 4294967295;
-const TRANSPARENT        : INT      = 1;
-const FW_NORMAL          : INT      = 400;
-const DEFAULT_CHARSET    : DWORD    = 1;
-const OUT_DEFAULT_PRECIS : DWORD    = 0;
-const CLIP_DEFAULT_PRECIS: DWORD    = 0;
-const ANTIALIASED_QUALITY: DWORD    = 4;
-const DEFAULT_PITCH      : DWORD    = 0;
-const FF_DONTCARE        : DWORD    = 0;
-const DIB_RGB_COLORS     : UINT     = 0;
-const BI_RGB             : DWORD    = 0;
-const FR_PRIVATE         : DWORD    = 0x10;
-
-// https://docs.microsoft.com/en-us/previous-versions/dd145106(v=vs.85)
-#[repr(C)]
-struct SIZE {
-    cx: LONG,
-    cy: LONG,
-}
-type LPSIZE = *mut SIZE;
-
-impl SIZE {
-    fn new() -> Self {
-        unsafe{ std::mem::zeroed() }
-    }
-}
-
-// https://docs.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-bitmapinfo
-#[repr(C)]
-struct BITMAPINFO {
-    bmiHeader: BITMAPINFOHEADER,
-    bmiColors: [RGBQUAD; 1]    ,
-}
-
-impl BITMAPINFO {
-    fn new() -> Self {
-        Self{
-            bmiHeader: BITMAPINFOHEADER::new(),
-            bmiColors: [RGBQUAD::new()],
-        }
-    }
-}
-
-// https://docs.microsoft.com/en-us/previous-versions/dd183376(v=vs.85)
-#[repr(C)]
-struct BITMAPINFOHEADER {
-    biSize         : DWORD,
-    biWidth        : LONG ,
-    biHeight       : LONG ,
-    biPlanes       : WORD ,
-    biBitCount     : WORD ,
-    biCompression  : DWORD,
-    biSizeImage    : DWORD,
-    biXPelsPerMeter: LONG ,
-    biYPelsPerMeter: LONG ,
-    biClrUsed      : DWORD,
-    biClrImportant : DWORD,
-}
-
-impl BITMAPINFOHEADER {
-    fn new() -> Self {
-        let mut result: Self = unsafe{ std::mem::zeroed() };
-        result.biSize = std::mem::size_of::<Self>() as _;
-        result
-    }
-}
-
-// https://docs.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-rgbquad
-#[repr(C)]
-struct RGBQUAD {
-    rgbBlue    : BYTE,
-    rgbGreen   : BYTE,
-    rgbRed     : BYTE,
-    rgbReserved: BYTE,
-}
-
-impl RGBQUAD {
-    fn new() -> Self {
-        unsafe{ std::mem::zeroed() }
-    }
-}
+use crate::winapi::*;
 
 /// UTF-8 to UTF-16 conversion.
 fn utf8_to_utf16(s: &str) -> Box<[WCHAR]> {
@@ -284,6 +22,17 @@ fn utf8_to_utf16(s: &str) -> Box<[WCHAR]> {
         res.set_len(len as usize);
     }
     res.into_boxed_slice()
+}
+
+/// Writes a file with the given bytes.
+fn file_write_bytes(path: &str, bytes: &[u8]) -> std::io::Result<()> {
+    let mut buff = File::create(path)?;
+    let mut pos = 0;
+    while pos < bytes.len() {
+        let bytes_written = buff.write(&bytes[pos..])?;
+        pos += bytes_written;
+    }
+    Ok(())
 }
 
 /// A wrapper type for a GDI DeviceContext.
@@ -326,8 +75,8 @@ impl Drop for GdiObject {
 // Font
 
 pub struct Win32Font {
-    meta: FontFile,
-    fname: String,
+    meta   : FontFile    ,
+    fname  : String      ,
     fname16: Box<[WCHAR]>,
 }
 
@@ -338,17 +87,10 @@ impl Win32Font {
         // Write to file so windows can safely load it as a resource
         // TODO: Some true random name?
         let fname = format!("{}.{}", "_temp", meta.get_extension());
-        // Scope the write so the file gets closed
-        {
-            let mut buff = File::create(&fname).unwrap(); // TODO
-            let mut pos = 0;
-            while pos < bytes.len() {
-                let bytes_written = buff.write(&bytes[pos..]).unwrap(); // TODO
-                pos += bytes_written;
-            }
-        }
-        // Load resource
         let fname16 = utf8_to_utf16(&fname);
+        // Scope the write so the file gets closed
+        file_write_bytes(&fname, bytes).unwrap(); // TODO
+        // Load resource
         let added_fonts = unsafe{ AddFontResourceExW(fname16.as_ptr(), FR_PRIVATE, std::ptr::null_mut()) };
         if added_fonts == 0 {
             unsafe{ RemoveFontResourceExW(fname16.as_ptr(), FR_PRIVATE, std::ptr::null_mut()) };

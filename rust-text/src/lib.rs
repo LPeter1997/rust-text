@@ -3,6 +3,7 @@
 mod parse;
 mod ttf;
 mod font_file;
+mod winapi;
 mod win32;
 
 // Import underlying types.
