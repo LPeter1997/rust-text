@@ -43,9 +43,9 @@ parseable_struct!{HeadTable{
     font_direction_hint: i16         ,
     index_to_loc_format: i16         ,
     glyph_data_format  : i16         ,
-    _padding           : i16         ,
 }}
 
+// TODO: Do we even need this? Aren't the offsets already long-aligned?
 fn long_align(origin: &[u8], input: &mut &[u8]) -> Result<(), ()> {
     let actual = *input;
     let distance = actual.as_ptr() as usize - origin.as_ptr() as usize;
@@ -58,7 +58,7 @@ fn long_align(origin: &[u8], input: &mut &[u8]) -> Result<(), ()> {
     if actual.len() < required_step {
         return Err(());
     }
-    *input = actual;
+    *input = &actual[required_step..];
     Ok(())
 }
 
