@@ -3,7 +3,10 @@
 
 #![cfg(target_os = "windows")]
 
+use std::io::prelude::*;
+use std::fs::File;
 use crate::RasterizedGlyph;
+use crate::font_files::FontFile;
 
 // Win32 type definitions
 
@@ -90,6 +93,13 @@ extern "system" {
     fn DeleteObject(
         ho: HGDIOBJ
     ) -> BOOL;
+
+    // https://docs.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-addfontresourcew
+    fn AddFontResourceExW(
+        name: LPCWSTR,
+        fl  : DWORD  ,
+        pdv : PVOID  ,
+    ) -> INT;
 
     // https://docs.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-addfontmemresourceex
     fn AddFontMemResourceEx(
@@ -183,6 +193,7 @@ const DEFAULT_PITCH      : DWORD    = 0;
 const FF_DONTCARE        : DWORD    = 0;
 const DIB_RGB_COLORS     : UINT     = 0;
 const BI_RGB             : DWORD    = 0;
+const FR_PRIVATE         : DWORD    = 0x10;
 
 // https://docs.microsoft.com/en-us/previous-versions/dd145106(v=vs.85)
 #[repr(C)]
@@ -270,48 +281,92 @@ fn utf8_to_utf16(s: &str) -> Box<[WCHAR]> {
 
 // Implementation of the font API
 
+// Font
+
 pub struct Win32Font {
-    resource_handle: HANDLE,
-    face: String,
+    meta: FontFile,
 }
 
 impl Win32Font {
-    pub fn from_bytes(bytes: &[u8], face: &str) -> Result<Self, ()> {
-        let mut nfonts: DWORD = 0;
-        let resource_handle = unsafe{ AddFontMemResourceEx(bytes.as_ptr() as _, bytes.len() as _, std::ptr::null_mut(), &mut nfonts) };
-        if resource_handle == std::ptr::null_mut() {
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, ()> {
+        // Get metadata
+        let meta = FontFile::from_bytes(bytes)?;
+        // Write to file so windows can safely load it as a resource
+        // TODO: Some true random name?
+        let fname = format!("{}.{}", "_temp", meta.get_extension());
+        let mut buff = File::create(&fname).unwrap(); // TODO
+        let mut pos = 0;
+        while pos < bytes.len() {
+            let bytes_written = buff.write(&bytes[pos..]).unwrap(); // TODO
+            pos += bytes_written;
+        }
+        // Load resource
+        let added_fonts = unsafe{ AddFontResourceExW(utf8_to_utf16(&fname).as_ptr(), FR_PRIVATE, std::ptr::null_mut()) };
+        if added_fonts == 0 {
+            println!("NULLA");
+            // Remove the file, but don't escalate errors!
             return Err(());
         }
+        // Delete file
+        std::fs::remove_file(&fname).unwrap();
+        // Done
         Ok(Self{
-            resource_handle,
-            face: face.into(),
+            meta,
         })
     }
 
-    pub fn scale(&self) -> Result<Win32ScaledFont, ()> {
-        Win32ScaledFont::create(self.resource_handle, &self.face)
+    pub fn get_face_names(&self) -> &[String] {
+        self.meta.get_face_names()
+    }
+
+    pub fn get_face(&self, name: &str) -> Result<Win32FontFace, ()> {
+        // TODO: Some fuzzy match? Substring match?
+        if !self.get_face_names().iter().any(|n| n == name) {
+            // No such face
+            return Err(());
+        }
+        // Create the font
+        Win32FontFace::create(name)
     }
 }
 
 impl Drop for Win32Font {
     fn drop(&mut self) {
-        unsafe{ RemoveFontMemResourceEx(self.resource_handle) };
+        //unsafe{ RemoveFontMemResourceEx(self.resource_handle) };
+        // TODO: Remember filename and call RemoveFontResourceExW?
     }
 }
 
-pub struct Win32ScaledFont {
-    font_handle: HFONT  ,
-
-    dc         : HDC    ,
-    bitmap     : HBITMAP,
-    buffer     : *const COLORREF,
-
-    buff_w     : usize  ,
-    buff_h     : usize  ,
+pub struct Win32FontFace {
+    face_name: String,
 }
 
-impl Win32ScaledFont {
-    fn create(res: HANDLE, face: &str) -> Result<Win32ScaledFont, ()> {
+impl Win32FontFace {
+    fn create(face_name: &str) -> Result<Self, ()> {
+        Ok(Self{
+            face_name: face_name.into(),
+        })
+    }
+
+    pub fn scale(&self) -> Result<Win32ScaledFontFace, ()> {
+        Win32ScaledFontFace::create(&self.face_name)
+    }
+}
+
+// Scaled font face
+
+pub struct Win32ScaledFontFace {
+    font_handle: HFONT          ,
+    dc         : HDC            ,
+    bitmap     : HBITMAP        ,
+
+    buffer     : *const COLORREF,
+    buff_w     : usize          ,
+    buff_h     : usize          ,
+}
+
+impl Win32ScaledFontFace {
+    fn create(face: &str) -> Result<Self, ()> {
         // TODO: Use guards?
         // Create font
         // TODO: Actual size
@@ -349,7 +404,7 @@ impl Win32ScaledFont {
             return Err(());
         }
         // We succeeded in creating everything
-        Ok(Win32ScaledFont{
+        Ok(Self{
             font_handle,
 
             dc,
@@ -445,7 +500,7 @@ impl Win32ScaledFont {
     }
 }
 
-impl Drop for Win32ScaledFont {
+impl Drop for Win32ScaledFontFace {
     fn drop(&mut self) {
         unsafe{ DeleteObject(self.font_handle) };
         unsafe{ DeleteObject(self.bitmap) };
