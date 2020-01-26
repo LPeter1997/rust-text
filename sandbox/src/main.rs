@@ -4,7 +4,7 @@ use std::fs::File;
 use rust_text as rt;
 
 fn main() {
-    let mut file = File::open("Hack-Regular.ttf").expect("couldn't find font file");
+    let mut file = File::open("Austine.ttf").expect("couldn't find font file");
     let bytes = file.bytes().map(|b| b.unwrap()).collect::<Vec<_>>().into_boxed_slice();
 
     let f = rt::Font::from_bytes(&bytes).expect("couldn't load font");

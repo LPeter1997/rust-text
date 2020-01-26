@@ -6,7 +6,7 @@
 use std::io::prelude::*;
 use std::fs::File;
 use crate::RasterizedGlyph;
-use crate::font_files::FontFile;
+use crate::font_file::FontFile;
 
 // Win32 type definitions
 

@@ -2,7 +2,7 @@
 #[macro_use]
 mod parse;
 mod ttf;
-mod font_files;
+mod font_file;
 mod win32;
 
 // Import underlying types.
