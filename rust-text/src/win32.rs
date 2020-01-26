@@ -409,9 +409,9 @@ pub struct Win32ScaledFontFace {
     bitmap: GdiObject    ,
     font  : GdiObject    ,
 
-    buffer: *const COLORREF,
-    buff_w: usize          ,
-    buff_h: usize          ,
+    buffer: &'static[COLORREF],
+    buff_w: usize      ,
+    buff_h: usize      ,
 }
 
 impl Win32ScaledFontFace {
@@ -449,7 +449,7 @@ impl Win32ScaledFontFace {
             bitmap,
             font,
 
-            buffer: std::ptr::null(),
+            buffer: unsafe{ std::slice::from_raw_parts(std::ptr::NonNull::dangling().as_ptr(), 0) },
             buff_w: 0,
             buff_h: 0,
         })
@@ -485,7 +485,7 @@ impl Win32ScaledFontFace {
         self.bitmap = bitmap;
         self.buff_w = width;
         self.buff_h = height;
-        self.buffer = bits as _;
+        self.buffer = unsafe{ std::slice::from_raw_parts(bits as _, width * height) };
         true
     }
 
@@ -523,8 +523,7 @@ impl Win32ScaledFontFace {
         for y in 0..height {
             let yoff = ((height - y - 1) * width) as usize;
             for x in 0..width {
-                //let pixel = unsafe{ GetPixel(self.dc, x, y) };
-                let pixel = unsafe{ *self.buffer.offset((self.buff_w * y as usize) as isize + x as isize) };
+                let pixel = self.buffer[(self.buff_w * y as usize) + x as usize];
                 data[yoff + x as usize] = (pixel & 0xff) as u8;
             }
         }
