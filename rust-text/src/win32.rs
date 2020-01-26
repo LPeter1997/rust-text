@@ -8,6 +8,7 @@ use std::fs::File;
 use crate::RasterizedGlyph;
 use crate::font_file::FontFile;
 use crate::winapi::*;
+use crate::{Result, Error};
 
 /// UTF-8 to UTF-16 conversion.
 fn utf8_to_utf16(s: &str) -> Box<[WCHAR]> {
@@ -81,7 +82,7 @@ pub struct Win32Font {
 }
 
 impl Win32Font {
-    pub fn from_bytes(bytes: &[u8]) -> Result<Self, ()> {
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
         // Get metadata
         let meta = FontFile::from_bytes(bytes)?;
         // Write to file so windows can safely load it as a resource
@@ -89,14 +90,14 @@ impl Win32Font {
         let fname = format!("{}.{}", "_temp", meta.get_extension());
         let fname16 = utf8_to_utf16(&fname);
         // Scope the write so the file gets closed
-        file_write_bytes(&fname, bytes).unwrap(); // TODO
+        file_write_bytes(&fname, bytes).map_err(|e| Error::IoError(e))?;
         // Load resource
         let added_fonts = unsafe{ AddFontResourceExW(fname16.as_ptr(), FR_PRIVATE, std::ptr::null_mut()) };
         if added_fonts == 0 {
             unsafe{ RemoveFontResourceExW(fname16.as_ptr(), FR_PRIVATE, std::ptr::null_mut()) };
             // Remove the file, but don't escalate errors!
             let _ = std::fs::remove_file(&fname);
-            return Err(());
+            return Err(Error::SystemError("AddFontResourceExW failed!".into()));
         }
         // Done
         Ok(Self{
@@ -110,11 +111,11 @@ impl Win32Font {
         self.meta.get_face_names()
     }
 
-    pub fn get_face(&self, name: &str) -> Result<Win32FontFace, ()> {
+    pub fn get_face(&self, name: &str) -> Result<Win32FontFace> {
         // TODO: Some fuzzy match? Substring match?
         if !self.get_face_names().iter().any(|n| n == name) {
             // No such face
-            return Err(());
+            return Err(Error::UserError(format!("No face named '{}' found in font!", name)));
         }
         // Create the font
         Win32FontFace::create(name)
@@ -133,13 +134,13 @@ pub struct Win32FontFace {
 }
 
 impl Win32FontFace {
-    fn create(face_name: &str) -> Result<Self, ()> {
+    fn create(face_name: &str) -> Result<Self> {
         Ok(Self{
             face_name: face_name.into(),
         })
     }
 
-    pub fn scale(&self) -> Result<Win32ScaledFontFace, ()> {
+    pub fn scale(&self) -> Result<Win32ScaledFontFace> {
         Win32ScaledFontFace::create(&self.face_name)
     }
 }
@@ -157,11 +158,11 @@ pub struct Win32ScaledFontFace {
 }
 
 impl Win32ScaledFontFace {
-    fn create(face: &str) -> Result<Self, ()> {
+    fn create(face: &str) -> Result<Self> {
         // Create Device Context
         let dc = DeviceContext(unsafe{ CreateCompatibleDC(std::ptr::null_mut()) });
         if dc.is_err() {
-            return Err(());
+            return Err(Error::SystemError("Failed to create Device Context!".into()));
         }
         // Create font
         // TODO: Actual size
@@ -169,21 +170,21 @@ impl Win32ScaledFontFace {
             DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY,
             DEFAULT_PITCH | FF_DONTCARE, utf8_to_utf16(face).as_ptr()) });
         if font.is_err() {
-            return Err(());
+            return Err(Error::SystemError("CreateFontW failed!".into()));
         }
         // Select the font for the Device Context
         if !dc.select(&font) {
-            return Err(());
+            return Err(Error::SystemError("Failed to assign Font to Device Context!".into()));
         }
         // Create bitmap
         // TODO: Size
         let bitmap = GdiObject(unsafe{ CreateCompatibleBitmap(dc.0, 0, 0) });
         if bitmap.is_err() {
-            return Err(());
+            return Err(Error::SystemError("Failed to create Bitmap!".into()));
         }
         // Select the bitmap for the Device Context
         if !dc.select(&bitmap) {
-            return Err(());
+            return Err(Error::SystemError("Failed to assign Bitmap to Device Context!".into()));
         }
         // We succeeded in creating everything
         Ok(Self{
@@ -197,10 +198,10 @@ impl Win32ScaledFontFace {
         })
     }
 
-    fn ensure_buffer_size(&mut self, width: usize, height: usize) -> bool {
+    fn ensure_buffer_size(&mut self, width: usize, height: usize) -> Result<()> {
         if self.buff_w >= width && self.buff_h >= height {
             // Already enough
-            return true;
+            return Ok(());
         }
         // Need to resize
         let mut info = BITMAPINFO::new();
@@ -217,47 +218,45 @@ impl Win32ScaledFontFace {
         let mut bits: PVOID = std::ptr::null_mut();
         let bitmap = GdiObject(unsafe{ CreateDIBSection(self.dc.0, &info, DIB_RGB_COLORS, &mut bits, std::ptr::null_mut(), 0) });
         if bitmap.is_err() {
-            return false;
+            return Err(Error::SystemError("Failed to create Bitmap!".into()));
         }
         // Select the bitmap for the Device Context
         if !self.dc.select(&bitmap) {
-            return false;
+            return Err(Error::SystemError("Failed to assign font to Device Context!".into()));
         }
         // Succeeded, delete old bitmap and swap
         self.bitmap = bitmap;
         self.buff_w = width;
         self.buff_h = height;
         self.buffer = unsafe{ std::slice::from_raw_parts(bits as _, width * height) };
-        true
+        Ok(())
     }
 
-    pub fn rasterize_glyph(&mut self, codepoint: char) -> Result<RasterizedGlyph, ()> {
+    pub fn rasterize_glyph(&mut self, codepoint: char) -> Result<RasterizedGlyph> {
         // Convert to UTF16
         let utf16str = utf8_to_utf16(&format!("{}", codepoint));
         // Get coordinates
         let mut size = SIZE::new();
         if unsafe{ GetTextExtentPoint32W(self.dc.0, utf16str.as_ptr(), utf16str.len() as _, &mut size) } == 0 {
-            return Err(());
+            return Err(Error::GlyphNotFound(codepoint));
         }
         let width = size.cx;
         let height = size.cy;
         // Ensure buffer size
-        if !self.ensure_buffer_size(width as usize, height as usize) {
-            return Err(());
-        }
+        self.ensure_buffer_size(width as usize, height as usize)?;
         // Set clear behavior
         if unsafe{ SetBkMode(self.dc.0, TRANSPARENT) } == 0 {
-            return Err(());
+            return Err(Error::SystemError("SetBkMode failed!".into()));
         }
         // Clear the bitmap
         unsafe{ PatBlt(self.dc.0, 0, 0, width, height, BLACKNESS) };
         // Set text color
         if unsafe{ SetTextColor(self.dc.0, 0x00ffffff) } == CLR_INVALID {
-            return Err(());
+            return Err(Error::SystemError("SetTextColor failed!".into()));
         }
         // Render to bitmap
         if unsafe{ TextOutW(self.dc.0, 0, 0, utf16str.as_ptr(), utf16str.len() as _) } == 0 {
-            return Err(());
+            return Err(Error::SystemError("TextOutW failed!".into()));
         }
         // Create the buffer
         let mut data = vec![0u8; (width * height) as usize].into_boxed_slice();

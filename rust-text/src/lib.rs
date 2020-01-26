@@ -1,10 +1,13 @@
 
-#[macro_use]
-mod parse;
+mod error;
+#[macro_use] mod parse;
 mod ttf;
 mod font_file;
 mod winapi;
 mod win32;
+
+pub use error::Error;
+pub type Result<T> = std::result::Result<T, Error>;
 
 // Import underlying types.
 #[cfg(target_os = "windows")]
@@ -24,7 +27,7 @@ pub struct Font(itypes::FontImpl);
 
 impl Font {
     /// Parses the binary contents of a font file.
-    pub fn from_bytes(bytes: &[u8]) -> Result<Self, ()> {
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
         Ok(Self(itypes::FontImpl::from_bytes(bytes)?))
     }
 
@@ -34,7 +37,7 @@ impl Font {
     }
 
     /// Returns a face object based on a face name.
-    pub fn get_face(&self, name: &str) -> Result<FontFace, ()> {
+    pub fn get_face(&self, name: &str) -> Result<FontFace> {
         Ok(FontFace(self.0.get_face(name)?))
     }
 }
@@ -44,7 +47,7 @@ pub struct FontFace(itypes::FontFaceImpl);
 
 impl FontFace {
     /// Scales the font face to a given size.
-    pub fn scale(&self) -> Result<ScaledFontFace, ()> {
+    pub fn scale(&self) -> Result<ScaledFontFace> {
         Ok(ScaledFontFace(self.0.scale()?))
     }
 }
@@ -54,7 +57,7 @@ pub struct ScaledFontFace(itypes::ScaledFontFaceImpl);
 
 impl ScaledFontFace {
     /// Rasterizes the given character to a grayscale bitmap.
-    pub fn rasterize_glyph(&mut self, codepoint: char) -> Result<RasterizedGlyph, ()> {
+    pub fn rasterize_glyph(&mut self, codepoint: char) -> Result<RasterizedGlyph> {
         self.0.rasterize_glyph(codepoint)
     }
 }
