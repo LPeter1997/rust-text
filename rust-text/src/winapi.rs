@@ -21,16 +21,12 @@ pub type LPWSTR    = *mut WCHAR;
 
 pub type VOID      = std::ffi::c_void;
 pub type PVOID     = *mut VOID;
-pub type LPVOID    = PVOID;
 
 pub type HANDLE    = PVOID;
 pub type HDC       = HANDLE;
 pub type HBITMAP   = HANDLE;
 pub type HGDIOBJ   = HANDLE;
-pub type HRSRC     = HANDLE;
 pub type HFONT     = HANDLE;
-pub type HINSTANCE = HANDLE;
-pub type HMODULE   = HINSTANCE;
 
 pub type COLORREF  = DWORD;
 
@@ -103,19 +99,6 @@ extern "system" {
         pdv : PVOID  ,
     ) -> BOOL;
 
-    // https://docs.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-addfontmemresourceex
-    pub fn AddFontMemResourceEx(
-        pFileView: PVOID     ,
-        cjSize   : DWORD     ,
-        pvResrved: PVOID     ,
-        pNumFonts: *mut DWORD,
-    ) -> HANDLE;
-
-    // https://docs.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-removefontmemresourceex
-    pub fn RemoveFontMemResourceEx(
-        h: HANDLE
-    ) -> BOOL;
-
     // https://docs.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-createfontw
     pub fn CreateFontW(
         cHeight        : INT    ,
@@ -133,13 +116,6 @@ extern "system" {
         iPitchAndFamily: DWORD  ,
         pszFaceName    : LPCWSTR,
     ) -> HFONT;
-
-    // https://docs.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-getpixel
-    pub fn GetPixel(
-        hdc: HDC,
-        x  : INT,
-        y  : INT,
-    ) -> COLORREF;
 
     // https://docs.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-gettextextentpoint32w
     pub fn GetTextExtentPoint32W(
@@ -212,6 +188,7 @@ impl SIZE {
 }
 
 // https://docs.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-bitmapinfo
+#[allow(non_snake_case)]
 #[repr(C)]
 pub struct BITMAPINFO {
     pub bmiHeader: BITMAPINFOHEADER,
@@ -228,6 +205,7 @@ impl BITMAPINFO {
 }
 
 // https://docs.microsoft.com/en-us/previous-versions/dd183376(v=vs.85)
+#[allow(non_snake_case)]
 #[repr(C)]
 pub struct BITMAPINFOHEADER {
     pub biSize         : DWORD,
@@ -252,6 +230,7 @@ impl BITMAPINFOHEADER {
 }
 
 // https://docs.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-rgbquad
+#[allow(non_snake_case)]
 #[repr(C)]
 pub struct RGBQUAD {
     pub rgbBlue    : BYTE,

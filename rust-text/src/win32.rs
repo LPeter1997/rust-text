@@ -150,11 +150,11 @@ impl Win32FontFace {
 pub struct Win32ScaledFontFace {
     dc    : DeviceContext,
     bitmap: GdiObject    ,
-    font  : GdiObject    ,
+    _font : GdiObject    ,
 
     buffer: &'static[COLORREF],
-    buff_w: usize      ,
-    buff_h: usize      ,
+    buff_w: usize             ,
+    buff_h: usize             ,
 }
 
 impl Win32ScaledFontFace {
@@ -190,7 +190,7 @@ impl Win32ScaledFontFace {
         Ok(Self{
             dc,
             bitmap,
-            font,
+            _font: font,
 
             buffer: unsafe{ std::slice::from_raw_parts(std::ptr::NonNull::dangling().as_ptr(), 0) },
             buff_w: 0,

@@ -7,9 +7,9 @@ pub(crate) type ParseResult<T> = Result<T, ()>;
 /// The trait that every parse-able type implements.
 pub(crate) trait Parse: Sized {
     /// Parses the type from a little-endian input.
-    fn parse_le(input: &mut &[u8]) -> ParseResult<Self> { unimplemented!(); }
+    fn parse_le(_input: &mut &[u8]) -> ParseResult<Self> { unimplemented!(); }
     /// Parses the type from a big-endian input.
-    fn parse_be(input: &mut &[u8]) -> ParseResult<Self> { unimplemented!(); }
+    fn parse_be(_input: &mut &[u8]) -> ParseResult<Self> { unimplemented!(); }
 }
 
 // Macro to implement for integral types.
