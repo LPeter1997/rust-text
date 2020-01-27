@@ -60,10 +60,19 @@ impl ScaledFontFace {
     pub fn rasterize_glyph(&mut self, codepoint: char) -> Result<RasterizedGlyph> {
         self.0.rasterize_glyph(codepoint)
     }
+
+    /// Shapes the passed in text to get laied out in the plane for rendering.
+    pub fn shape_text<F: FnMut(usize, usize, char)>(&self, text: &str, f: F) -> (usize, usize) {
+        self.0.shape_text(text, f)
+    }
 }
 
 /// Represents a glyph that has been rasterized into a byte array.
 pub struct RasterizedGlyph {
+    /// Horizontal offset to add when rendering.
+    pub x_offset: usize,
+    /// Vertical offset to add when rendering.
+    pub y_offset: usize,
     /// Width of the bitmap in pixels.
     pub width: usize,
     /// Height of the bitmap in pixels.

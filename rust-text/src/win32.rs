@@ -319,6 +319,16 @@ impl Win32ScaledFontFace {
         }
         // Calculate the tightest bounds
         let bounds = self.get_tightest_bounds();
+        if bounds.left > bounds.right {
+            // The canvas must be empty, return empty canvas
+            return Ok(RasterizedGlyph{
+                x_offset: 0,
+                y_offset: 0,
+                width: 0,
+                height: 0,
+                data: vec![0u8; 0].into_boxed_slice(),
+            });
+        }
         let bounds_width = bounds.right - bounds.left;
         let bounds_height = bounds.bottom - bounds.top;
         // Create the resulting buffer
@@ -334,10 +344,39 @@ impl Win32ScaledFontFace {
         }
         // We succeeded
         Ok(RasterizedGlyph{
+            x_offset: bounds.left,
+            y_offset: bounds.top,
             width: bounds_width,
             height: bounds_height,
             data,
         })
+    }
+
+    pub fn shape_text<F: FnMut(usize, usize, char)>(&self, text: &str, mut f: F) -> (usize, usize) {
+        let text16 = utf8_to_utf16(text);
+        let mut results = GCP_RESULTSW::new();
+        let mut glyphs = vec![0i16; text16.len()].into_boxed_slice();
+        let mut dx = vec![0i32; text16.len()].into_boxed_slice();
+        let mut order = vec![0u32; text16.len()].into_boxed_slice();
+        results.lpGlyphs = glyphs.as_mut_ptr();
+        results.nGlyphs = text.len() as DWORD;
+        results.lpDx = dx.as_mut_ptr();
+        results.lpOrder = order.as_mut_ptr();
+        let res = unsafe{ GetCharacterPlacementW(self.dc.0,
+            text16.as_ptr(), text.len() as INT, 0, &mut results, 0) };
+        let res_w = (res & 0x0000ffff) as usize;
+        let res_h = ((res & 0xffff0000) >> 16) as usize;
+
+        let mut xoff = 0;
+        let mut yoff = 0;
+        let mut chs = text.chars();
+        for i in 0..results.nGlyphs {
+            let offs = unsafe{ *results.lpOrder.offset(i as isize) };
+            let offs = unsafe{ *results.lpDx.offset(offs as isize) };
+            f(xoff, yoff, chs.next().unwrap());
+            xoff += offs as usize;
+        }
+        (res_w, res_h)
     }
 }
 

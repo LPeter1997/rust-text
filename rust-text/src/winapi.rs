@@ -13,10 +13,13 @@ pub type BOOL      = INT;
 pub type WORD      = u16;
 pub type DWORD     = u32;
 
+pub type HRESULT   = LONG;
+
 pub type CHAR      = i8;
 pub type WCHAR     = i16;
 pub type LPCWSTR   = *const WCHAR;
 pub type LPCSTR    = *const CHAR;
+pub type LPSTR     = *mut CHAR;
 pub type LPWSTR    = *mut WCHAR;
 
 pub type VOID      = std::ffi::c_void;
@@ -155,6 +158,16 @@ extern "system" {
         hdc : HDC,
         mode: INT,
     ) -> INT;
+
+    // https://docs.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-getcharacterplacementw
+    pub fn GetCharacterPlacementW(
+        hdc       : HDC,
+        lpString  : LPCWSTR,
+        nCount    : INT,
+        nMexExtent: INT,
+        lpResults : LPGCP_RESULTSW,
+        dwFlags   : DWORD,
+    ) -> DWORD;
 }
 
 // Used constants from Win32
@@ -242,5 +255,30 @@ pub struct RGBQUAD {
 impl RGBQUAD {
     pub fn new() -> Self {
         unsafe{ std::mem::zeroed() }
+    }
+}
+
+// https://docs.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-gcp_resultsw
+#[allow(non_snake_case)]
+#[repr(C)]
+pub struct GCP_RESULTSW {
+    pub lStructSize: DWORD    ,
+    pub lpOutString: LPWSTR   ,
+    pub lpOrder    : *mut UINT,
+    pub lpDx       : *mut INT ,
+    pub lpCaretPos : *mut INT ,
+    pub lpClass    : LPSTR    ,
+    pub lpGlyphs   : LPWSTR   ,
+    pub nGlyphs    : UINT     ,
+    pub nMaxFit    : INT      ,
+}
+#[allow(non_snake_case)]
+pub type LPGCP_RESULTSW = *mut GCP_RESULTSW;
+
+impl GCP_RESULTSW {
+    pub fn new() -> Self {
+        let mut result: Self = unsafe{ std::mem::zeroed() };
+        result.lStructSize = std::mem::size_of::<Self>() as DWORD;
+        result
     }
 }
