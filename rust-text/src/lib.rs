@@ -47,8 +47,8 @@ pub struct FontFace(itypes::FontFaceImpl);
 
 impl FontFace {
     /// Scales the font face to a given size.
-    pub fn scale(&self) -> Result<ScaledFontFace> {
-        Ok(ScaledFontFace(self.0.scale()?))
+    pub fn scale(&self, pts: f64, dpi: f64) -> Result<ScaledFontFace> {
+        Ok(ScaledFontFace(self.0.scale(pts, dpi)?))
     }
 }
 

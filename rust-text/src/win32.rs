@@ -140,8 +140,8 @@ impl Win32FontFace {
         })
     }
 
-    pub fn scale(&self) -> Result<Win32ScaledFontFace> {
-        Win32ScaledFontFace::create(&self.face_name)
+    pub fn scale(&self, pts: f64, dpi: f64) -> Result<Win32ScaledFontFace> {
+        Win32ScaledFontFace::create(&self.face_name, pts, dpi)
     }
 }
 
@@ -158,15 +158,18 @@ pub struct Win32ScaledFontFace {
 }
 
 impl Win32ScaledFontFace {
-    fn create(face: &str) -> Result<Self> {
+    fn create(face: &str, pts: f64, dpi: f64) -> Result<Self> {
         // Create Device Context
         let dc = DeviceContext(unsafe{ CreateCompatibleDC(std::ptr::null_mut()) });
         if dc.is_err() {
             return Err(Error::SystemError("Failed to create Device Context!".into()));
         }
+        // Calculate size
+        const POINTS_PER_INCH: f64 = 72.0;
+        let pixels_height = -(pts * dpi / POINTS_PER_INCH) as INT;
         // Create font
-        // TODO: Actual size
-        let font = GdiObject(unsafe{ CreateFontW(128, 0, 0, 0, FW_NORMAL, 0, 0, 0,
+        let font = GdiObject(unsafe{ CreateFontW(pixels_height, 0,
+            0, 0, FW_NORMAL, 0, 0, 0,
             DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY,
             DEFAULT_PITCH | FF_DONTCARE, utf8_to_utf16(face).as_ptr()) });
         if font.is_err() {

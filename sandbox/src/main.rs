@@ -14,7 +14,7 @@ fn main() {
     }
 
     let f0 = f.get_face(&*f.get_face_names()[0]).expect("couldn't load face from font");
-    let mut sf = f0.scale().expect("couldn't scale font");
+    let mut sf = f0.scale(16.0, 96.0).expect("couldn't scale font");
 
     /*
     let ch1 = sf.rasterize_glyph('A').expect("couldn't render glyph");
