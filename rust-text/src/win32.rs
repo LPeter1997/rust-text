@@ -384,15 +384,19 @@ impl Win32ScaledFontFace {
         // Loop through characters, move cursor along
         let mut chs = text.chars();
         for i in 0..results.nGlyphs {
-            let ch = chs.next().unwrap();
             // Get the advance width
             let offs = unsafe{ *results.lpOrder.offset(i as isize) };
             let offs = unsafe{ *results.lpDx.offset(offs as isize) };
-            f(xoff, yoff, ch);
-            xoff += offs as usize;
-            if ch == '\n' {
-                xoff = 0;
-                yoff += line_height;
+            if let Some(ch) = chs.next() {
+                f(xoff, yoff, ch);
+                xoff += offs as usize;
+                if ch == '\n' {
+                    xoff = 0;
+                    yoff += line_height;
+                }
+            }
+            else {
+                xoff += offs as usize;
             }
             max_w = std::cmp::max(max_w, xoff);
             max_h = std::cmp::max(max_h, yoff + line_height);
