@@ -152,9 +152,9 @@ pub struct Win32ScaledFontFace {
     bitmap: GdiObject    ,
     _font : GdiObject    ,
 
-    buffer: &'static[COLORREF],
-    buff_w: usize             ,
-    buff_h: usize             ,
+    buffer: &'static mut[COLORREF],
+    buff_w: usize                 ,
+    buff_h: usize                 ,
 }
 
 impl Win32ScaledFontFace {
@@ -192,7 +192,7 @@ impl Win32ScaledFontFace {
             bitmap,
             _font: font,
 
-            buffer: unsafe{ std::slice::from_raw_parts(std::ptr::NonNull::dangling().as_ptr(), 0) },
+            buffer: unsafe{ std::slice::from_raw_parts_mut(std::ptr::NonNull::dangling().as_ptr(), 0) },
             buff_w: 0,
             buff_h: 0,
         })
@@ -203,6 +203,9 @@ impl Win32ScaledFontFace {
             // Already enough
             return Ok(());
         }
+        // Calculate new size
+        let width = std::cmp::max(width, self.buff_w);
+        let height = std::cmp::max(height, self.buff_h);
         // Need to resize
         let mut info = BITMAPINFO::new();
         info.bmiHeader.biWidth = width as _;
@@ -228,8 +231,55 @@ impl Win32ScaledFontFace {
         self.bitmap = bitmap;
         self.buff_w = width;
         self.buff_h = height;
-        self.buffer = unsafe{ std::slice::from_raw_parts(bits as _, width * height) };
+        self.buffer = unsafe{ std::slice::from_raw_parts_mut(bits as _, width * height) };
         Ok(())
+    }
+
+    fn get_tightest_bounds(&self) -> Bounds {
+        let mut result = Bounds::default();
+
+        // Find left bound
+        result.left = 0;
+        'outer1: for x in 0..self.buff_w {
+            for y in 0..self.buff_h {
+                if self.buffer[y * self.buff_w + x] != 0 {
+                    break 'outer1;
+                }
+            }
+            result.left = x + 1;
+        }
+        // Find right bound
+        result.right = self.buff_w;
+        'outer2: for x in (0..self.buff_w).rev() {
+            for y in 0..self.buff_h {
+                if self.buffer[y * self.buff_w + x] != 0 {
+                    break 'outer2;
+                }
+            }
+            result.right = x;
+        }
+        // Find top bound
+        result.top = 0;
+        'outer3: for y in 0..self.buff_h {
+            for x in 0..self.buff_w {
+                if self.buffer[y * self.buff_w + x] != 0 {
+                    break 'outer3;
+                }
+            }
+            result.top = y + 1;
+        }
+        // Find bottom bound
+        result.bottom = self.buff_h;
+        'outer4: for y in (0..self.buff_h).rev() {
+            for x in 0..self.buff_w {
+                if self.buffer[y * self.buff_w + x] != 0 {
+                    break 'outer4;
+                }
+            }
+            result.bottom = y;
+        }
+
+        result
     }
 
     pub fn rasterize_glyph(&mut self, codepoint: char) -> Result<RasterizedGlyph> {
@@ -240,16 +290,16 @@ impl Win32ScaledFontFace {
         if unsafe{ GetTextExtentPoint32W(self.dc.0, utf16str.as_ptr(), utf16str.len() as _, &mut size) } == 0 {
             return Err(Error::GlyphNotFound(codepoint));
         }
-        let width = size.cx;
-        let height = size.cy;
+        let required_width = size.cx as usize;
+        let required_height = size.cy as usize;
         // Ensure buffer size
-        self.ensure_buffer_size(width as usize, height as usize)?;
+        self.ensure_buffer_size(required_width, required_height)?;
         // Set clear behavior
         if unsafe{ SetBkMode(self.dc.0, TRANSPARENT) } == 0 {
             return Err(Error::SystemError("SetBkMode failed!".into()));
         }
         // Clear the bitmap
-        unsafe{ PatBlt(self.dc.0, 0, 0, width, height, BLACKNESS) };
+        unsafe{ PatBlt(self.dc.0, 0, 0, self.buff_w as INT, self.buff_h as INT, BLACKNESS) };
         // Set text color
         if unsafe{ SetTextColor(self.dc.0, 0x00ffffff) } == CLR_INVALID {
             return Err(Error::SystemError("SetTextColor failed!".into()));
@@ -258,21 +308,44 @@ impl Win32ScaledFontFace {
         if unsafe{ TextOutW(self.dc.0, 0, 0, utf16str.as_ptr(), utf16str.len() as _) } == 0 {
             return Err(Error::SystemError("TextOutW failed!".into()));
         }
-        // Create the buffer
-        let mut data = vec![0u8; (width * height) as usize].into_boxed_slice();
+        // Invert the rows for easier copy (the buffer contents is upside down)
+        for y in 0..(self.buff_h / 2) {
+            let y_inv = self.buff_h - y - 1;
+            for x in 0..self.buff_w {
+                self.buffer.swap(
+                    y * self.buff_w + x,
+                    y_inv * self.buff_w + x);
+            }
+        }
+        // Calculate the tightest bounds
+        let bounds = self.get_tightest_bounds();
+        let bounds_width = bounds.right - bounds.left;
+        let bounds_height = bounds.bottom - bounds.top;
+        // Create the resulting buffer
+        let mut data = vec![0u8; (bounds_width * bounds_height) as usize].into_boxed_slice();
         // Copy the data to the buffer
-        for y in 0..height {
-            let yoff = ((height - y - 1) * width) as usize;
-            for x in 0..width {
-                let pixel = self.buffer[(self.buff_w * y as usize) + x as usize];
-                data[yoff + x as usize] = (pixel & 0xff) as u8;
+        for y in 0..bounds_height {
+            let y_buff_offs = (y + bounds.top) * self.buff_w;
+            let y_res_offs = y * bounds_width;
+            for x in 0..bounds_width {
+                let pixel = self.buffer[y_buff_offs + bounds.left + x];
+                data[y_res_offs + x] = (pixel & 0xff) as u8;
             }
         }
         // We succeeded
         Ok(RasterizedGlyph{
-            width: width as usize,
-            height: height as usize,
+            width: bounds_width,
+            height: bounds_height,
             data,
         })
     }
+}
+
+/// Represents bounds for the bitmap.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+struct Bounds {
+    left  : usize,
+    top   : usize,
+    right : usize,
+    bottom: usize,
 }
