@@ -353,7 +353,9 @@ impl Win32ScaledFontFace {
     }
 
     pub fn shape_text<F: FnMut(usize, usize, char)>(&self, text: &str, mut f: F) -> (usize, usize) {
+        // Encode in UTF16
         let text16 = utf8_to_utf16(text);
+        // Calculate offsets
         let mut results = GCP_RESULTSW::new();
         let mut glyphs = vec![0i16; text16.len()].into_boxed_slice();
         let mut dx = vec![0i32; text16.len()].into_boxed_slice();
@@ -364,19 +366,35 @@ impl Win32ScaledFontFace {
         results.lpOrder = order.as_mut_ptr();
         let res = unsafe{ GetCharacterPlacementW(self.dc.0,
             text16.as_ptr(), text.len() as INT, 0, &mut results, 0) };
+        // The resulting dimensions
         let res_w = (res & 0x0000ffff) as usize;
         let res_h = ((res & 0xffff0000) >> 16) as usize;
+        let line_height = res_h;
 
+        // Biggest dimensions
+        let mut max_w = 0;
+        let mut max_h = 0;
+
+        // Cursor
         let mut xoff = 0;
         let mut yoff = 0;
+        // Loop through characters, move cursor along
         let mut chs = text.chars();
         for i in 0..results.nGlyphs {
+            let ch = chs.next().unwrap();
+            // Get the advance width
             let offs = unsafe{ *results.lpOrder.offset(i as isize) };
             let offs = unsafe{ *results.lpDx.offset(offs as isize) };
-            f(xoff, yoff, chs.next().unwrap());
+            f(xoff, yoff, ch);
             xoff += offs as usize;
+            if ch == '\n' {
+                xoff = 0;
+                yoff += line_height;
+            }
+            max_w = std::cmp::max(max_w, xoff);
+            max_h = std::cmp::max(max_h, yoff + line_height);
         }
-        (res_w, res_h)
+        (max_w, max_h)
     }
 }
 

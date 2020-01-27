@@ -23,7 +23,7 @@ fn main() {
     image::save_buffer("image2.png", &ch2.data, ch2.width as u32, ch2.height as u32, image::Gray(8)).expect("failed to write image");
     */
 
-    let text = "Hello, World!";
+    let text = "Hello, World!\nBye World!";
 
     let mut glyphs = HashMap::new();
     for c in text.chars() {
