@@ -13,8 +13,6 @@ pub type BOOL      = INT;
 pub type WORD      = u16;
 pub type DWORD     = u32;
 
-pub type HRESULT   = LONG;
-
 pub type CHAR      = i8;
 pub type WCHAR     = i16;
 pub type LPCWSTR   = *const WCHAR;
@@ -272,7 +270,7 @@ pub struct GCP_RESULTSW {
     pub nGlyphs    : UINT     ,
     pub nMaxFit    : INT      ,
 }
-#[allow(non_snake_case)]
+#[allow(non_camel_case_types)]
 pub type LPGCP_RESULTSW = *mut GCP_RESULTSW;
 
 impl GCP_RESULTSW {

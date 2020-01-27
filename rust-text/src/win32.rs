@@ -367,7 +367,7 @@ impl Win32ScaledFontFace {
         let res = unsafe{ GetCharacterPlacementW(self.dc.0,
             text16.as_ptr(), text.len() as INT, 0, &mut results, 0) };
         // The resulting dimensions
-        let res_w = (res & 0x0000ffff) as usize;
+        let _res_w = (res & 0x0000ffff) as usize;
         let res_h = ((res & 0xffff0000) >> 16) as usize;
         let line_height = res_h;
 
