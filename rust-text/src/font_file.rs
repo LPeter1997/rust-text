@@ -16,10 +16,10 @@ impl FontFile {
     pub(crate) fn from_bytes(bytes: &[u8]) -> Result<Self> {
         // Try TTF
         if let Ok(ttf) = TtfFile::parse(bytes) {
-            if let Some(name) = ttf.get_name(4) {
+            if let Some(names) = ttf.get_name(4) {
                 return Ok(Self{
                     extension: "ttf".into(),
-                    face_names: vec![name.into()],
+                    face_names: names.iter().cloned().collect(),
                 });
             }
         }

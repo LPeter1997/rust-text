@@ -2,7 +2,7 @@
 // TrueType format interpretation.
 
 use super::parse::*;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// The magic number that must be in the head table's `magic_number` field.
 const HEAD_TABLE_MAGIC: u32 = 0x5F0F3CF5;
@@ -96,7 +96,7 @@ pub(crate) struct TtfFile {
     offset: OffsetSubtable,
     head: HeadTable,
     name: NameTable,
-    names: HashMap<u16, String>,
+    names: HashMap<u16, HashSet<String>>,
 }
 
 impl TtfFile {
@@ -105,9 +105,9 @@ impl TtfFile {
         Self::parse_be(&mut input)
     }
 
-    /// Returns an entry with the given NameID from the 'name' table.
-    pub(crate) fn get_name(&self, id: u16) -> Option<&str> {
-        self.names.get(&id).map(|s| s.as_str())
+    /// Returns the entries with the given NameID from the 'name' table.
+    pub(crate) fn get_name(&self, id: u16) -> Option<&HashSet<String>> {
+        self.names.get(&id)
     }
 }
 
@@ -147,7 +147,7 @@ impl Parse for TtfFile {
         let orig_name_bytes = name_bytes;
         let name = NameTable::parse_be(&mut name_bytes).unwrap();
         // Collect the names
-        let mut names = HashMap::new();
+        let mut names: HashMap<u16, HashSet<String>> = HashMap::new();
         let strings = &orig_name_bytes[(name.string_offset as usize)..];
         for e in &name.name_records {
             let offs = e.offset as usize;
@@ -168,7 +168,11 @@ impl Parse for TtfFile {
                     String::from_utf16_lossy(&text16)
                 };
             // Add it to the names
-            names.insert(e.name_id, text);
+            if !names.contains_key(&e.name_id) {
+                names.insert(e.name_id, HashSet::new());
+            }
+            let ns = names.get_mut(&e.name_id).unwrap();
+            ns.insert(text);
         }
 
         *input = bytes;

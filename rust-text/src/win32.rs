@@ -367,7 +367,6 @@ impl Win32ScaledFontFace {
         let text16 = utf8_to_utf16(text);
         // Prepare parameters
         let flags = Self::translate_flags(options);
-        println!("Flags {:?}", flags);
         let mut results = GCP_RESULTSW::new();
         let mut glyphs = vec![0i16; text16.len()].into_boxed_slice();
         let mut dx = vec![0i32; text16.len()].into_boxed_slice();
