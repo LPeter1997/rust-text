@@ -363,10 +363,12 @@ impl Win32ScaledFontFace {
         let mut glyphs = vec![0i16; text16.len()].into_boxed_slice();
         let mut dx = vec![0i32; text16.len()].into_boxed_slice();
         let mut order = vec![0u32; text16.len()].into_boxed_slice();
+        let mut caret_pos = vec![0i32; text16.len()].into_boxed_slice();
         results.lpGlyphs = glyphs.as_mut_ptr();
         results.nGlyphs = text.len() as DWORD;
         results.lpDx = dx.as_mut_ptr();
         results.lpOrder = order.as_mut_ptr();
+        results.lpCaretPos = caret_pos.as_mut_ptr();
         let res = unsafe{ GetCharacterPlacementW(self.dc.0,
             text16.as_ptr(), text.len() as INT, 0, &mut results, 0) };
         // The resulting dimensions
@@ -383,21 +385,30 @@ impl Win32ScaledFontFace {
         let mut yoff = 0;
         // Loop through characters, move cursor along
         let mut chs = text.chars();
+        let mut caret_neg = 0;
+        let mut prev_newline = false;
         for i in 0..results.nGlyphs {
             // Get the advance width
-            let offs = unsafe{ *results.lpOrder.offset(i as isize) };
-            let offs = unsafe{ *results.lpDx.offset(offs as isize) };
+            let order = unsafe{ *results.lpOrder.offset(i as isize) };
+            let offs = unsafe{ *results.lpDx.offset(order as isize) };
+            let mut caret_offs = unsafe{ *results.lpCaretPos.offset(order as isize) };
             if let Some(ch) = chs.next() {
+                if prev_newline {
+                    caret_neg = caret_offs;
+                    prev_newline = false;
+                }
                 let gp = GlyphPositioning{
                     character: ch,
+                    index: i as usize,
                     x: xoff,
                     y: yoff,
-                    carat_x: 0,
-                    carat_y: 0,
+                    caret_x: caret_offs - caret_neg,
+                    caret_y: yoff,
                 };
                 f(gp);
                 xoff += offs;
                 if ch == '\n' {
+                    prev_newline = true;
                     xoff = 0;
                     yoff += line_height;
                 }

@@ -86,12 +86,15 @@ pub struct RasterizedGlyph {
 pub struct GlyphPositioning {
     /// The character being positioned.
     pub character: char,
+    /// The index of the character (0 based, relative to the first one) being
+    /// positioned.
+    pub index: usize,
     /// The x offset from 0, 0.
     pub x: i32,
     /// The y offset from 0, 0.
     pub y: i32,
-    /// The carat's x position before this character.
-    pub carat_x: i32,
-    /// The carat's y position before this character.
-    pub carat_y: i32,
+    /// The caret's x position before this character.
+    pub caret_x: i32,
+    /// The caret's y position before this character.
+    pub caret_y: i32,
 }
