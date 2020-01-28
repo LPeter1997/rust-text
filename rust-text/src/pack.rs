@@ -51,11 +51,32 @@ pub(crate) fn bin_pack<
 /// Returned by the packing operation to summate the results.
 pub struct PackResult<K> {
     /// The required width to fit in every entry.
-    pub width: usize,
+    width: usize,
     /// The required height to fit in every entry.
-    pub height: usize,
+    height: usize,
     /// The map from the entry key to it's fit rectangle.
-    pub items: HashMap<K, Rect>,
+    items: HashMap<K, Rect>,
+}
+
+impl <K> PackResult<K> {
+    /// Returns the required width to fit in every entry.
+    pub fn width(&self) -> usize { self.width }
+    /// Returns the required height to fit in every entry.
+    pub fn height(&self) -> usize { self.height }
+}
+
+impl <'a, K> IntoIterator for &'a PackResult<K> {
+    type Item = (&'a K, &'a Rect);
+    type IntoIter = std::collections::hash_map::Iter<'a, K, Rect>;
+
+    fn into_iter(self) -> Self::IntoIter { self.items.iter() }
+}
+
+impl <K> IntoIterator for PackResult<K> {
+    type Item = (K, Rect);
+    type IntoIter = std::collections::hash_map::IntoIter<K, Rect>;
+
+    fn into_iter(self) -> Self::IntoIter { self.items.into_iter() }
 }
 
 /// The backing data-structure to the packing algorithm.

@@ -26,8 +26,8 @@ fn main() {
     glyphs.insert('_', sf.rasterize_glyph('_').expect("Failed to render glyph!"));
 
     let pack = rt::pack_glyphs(glyphs.values());
-    let w = pack.width as i32;
-    let h = pack.height as i32;
+    let w = pack.width() as i32;
+    let h = pack.height() as i32;
     let mut buff = vec![0u8; (w * h).abs() as usize];
 
     let mut blit = |x0: i32, y0: i32, rg: &rt::RasterizedGlyph| {
@@ -44,8 +44,8 @@ fn main() {
         }
     };
 
-    for (c, rect) in pack.items {
-        let g = glyphs.get(&c).unwrap();
+    for (c, rect) in &pack {
+        let g = glyphs.get(c).unwrap();
         blit(rect.x as i32, rect.y as i32, g);
     }
 
