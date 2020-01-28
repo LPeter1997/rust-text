@@ -62,7 +62,7 @@ impl ScaledFontFace {
     }
 
     /// Shapes the passed in text to get laied out in the plane for rendering.
-    pub fn shape_text<F: FnMut(usize, usize, char)>(&self, text: &str, f: F) -> (usize, usize) {
+    pub fn shape_text<F: FnMut(GlyphPositioning)>(&self, text: &str, f: F) -> (i32, i32) {
         self.0.shape_text(text, f)
     }
 }
@@ -70,13 +70,28 @@ impl ScaledFontFace {
 /// Represents a glyph that has been rasterized into a byte array.
 pub struct RasterizedGlyph {
     /// Horizontal offset to add when rendering.
-    pub x_offset: usize,
+    pub x_offset: i32,
     /// Vertical offset to add when rendering.
-    pub y_offset: usize,
+    pub y_offset: i32,
     /// Width of the bitmap in pixels.
     pub width: usize,
     /// Height of the bitmap in pixels.
     pub height: usize,
     /// The bitmap data itself (row-major, grayscale, one byte per pixel).
     pub data: Box<[u8]>,
+}
+
+/// Represents the parameter pack passed back to the user for text shaping.
+/// Contains information about the actual character's positioning.
+pub struct GlyphPositioning {
+    /// The character being positioned.
+    pub character: char,
+    /// The x offset from 0, 0.
+    pub x: i32,
+    /// The y offset from 0, 0.
+    pub y: i32,
+    /// The carat's x position before this character.
+    pub carat_x: i32,
+    /// The carat's y position before this character.
+    pub carat_y: i32,
 }

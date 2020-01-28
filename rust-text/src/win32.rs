@@ -5,7 +5,7 @@
 
 use std::io::prelude::*;
 use std::fs::File;
-use crate::RasterizedGlyph;
+use crate::{RasterizedGlyph, GlyphPositioning};
 use crate::font_file::FontFile;
 use crate::winapi::*;
 use crate::{Result, Error};
@@ -347,15 +347,15 @@ impl Win32ScaledFontFace {
         }
         // We succeeded
         Ok(RasterizedGlyph{
-            x_offset: bounds.left,
-            y_offset: bounds.top,
+            x_offset: bounds.left as i32,
+            y_offset: bounds.top as i32,
             width: bounds_width,
             height: bounds_height,
             data,
         })
     }
 
-    pub fn shape_text<F: FnMut(usize, usize, char)>(&self, text: &str, mut f: F) -> (usize, usize) {
+    pub fn shape_text<F: FnMut(GlyphPositioning)>(&self, text: &str, mut f: F) -> (i32, i32) {
         // Encode in UTF16
         let text16 = utf8_to_utf16(text);
         // Calculate offsets
@@ -372,7 +372,7 @@ impl Win32ScaledFontFace {
         // The resulting dimensions
         let _res_w = (res & 0x0000ffff) as usize;
         let res_h = ((res & 0xffff0000) >> 16) as usize;
-        let line_height = res_h;
+        let line_height = res_h as i32;
 
         // Biggest dimensions
         let mut max_w = 0;
@@ -388,16 +388,25 @@ impl Win32ScaledFontFace {
             let offs = unsafe{ *results.lpOrder.offset(i as isize) };
             let offs = unsafe{ *results.lpDx.offset(offs as isize) };
             if let Some(ch) = chs.next() {
-                f(xoff, yoff, ch);
-                xoff += offs as usize;
+                let gp = GlyphPositioning{
+                    character: ch,
+                    x: xoff,
+                    y: yoff,
+                    carat_x: 0,
+                    carat_y: 0,
+                };
+                f(gp);
+                xoff += offs;
                 if ch == '\n' {
                     xoff = 0;
                     yoff += line_height;
                 }
             }
             else {
-                xoff += offs as usize;
+                xoff += offs;
             }
+            // TODO: Max logic is not enough for text going left!
+            // We need to track the max offset from 0, 0 into any direction!
             max_w = std::cmp::max(max_w, xoff);
             max_h = std::cmp::max(max_h, yoff + line_height);
         }

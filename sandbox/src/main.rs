@@ -30,24 +30,24 @@ fn main() {
         glyphs.insert(c, sf.rasterize_glyph(c).expect("Failed to render glyph!"));
     }
 
-    let (w, h) = sf.shape_text(text, |_, _, _| {});
-    let mut buff = vec![0u8; w * h];
+    let (w, h) = sf.shape_text(text, |_| {});
+    let mut buff = vec![0u8; (w * h).abs() as usize];
 
-    let mut blit = |x0: usize, y0: usize, rg: &rt::RasterizedGlyph| {
+    let mut blit = |x0: i32, y0: i32, rg: &rt::RasterizedGlyph| {
         for y in 0..rg.height {
             for x in 0..rg.width {
                 let pix = rg.data[y * rg.width + x];
                 if pix != 0 {
-                    buff[(y0 + y) * w + x0 + x] = pix;
+                    buff[((y0 + y as i32) * w + x0 + x as i32) as usize] = pix;
                 }
             }
         }
     };
 
-    sf.shape_text(text, |x, y, c| {
-        println!("{}: {}, {}", c, x, y);
-        let glyph = glyphs.get(&c).unwrap();
-        blit(x + glyph.x_offset, y + glyph.y_offset, glyph);
+    sf.shape_text(text, |p| {
+        println!("{}: {}, {}", p.character, p.x, p.y);
+        let glyph = glyphs.get(&p.character).unwrap();
+        blit(p.x + glyph.x_offset, p.y + glyph.y_offset, glyph);
     });
 
     image::save_buffer("out.png", &buff, w as u32, h as u32, image::Gray(8)).expect("failed to write image");
