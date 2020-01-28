@@ -37,13 +37,13 @@ impl Font {
     }
 
     /// Returns list of face names contained in this file.
-    pub fn get_face_names(&self) -> &[String] {
-        self.0.get_face_names()
+    pub fn face_names(&self) -> &[String] {
+        self.0.face_names()
     }
 
     /// Returns a face object based on a face name.
-    pub fn get_face(&self, name: &str) -> Result<FontFace> {
-        Ok(FontFace(self.0.get_face(name)?))
+    pub fn face(&self, name: &str) -> Result<FontFace> {
+        Ok(FontFace(self.0.face(name)?))
     }
 }
 

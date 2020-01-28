@@ -86,7 +86,7 @@ impl Win32Font {
         let meta = FontFile::from_bytes(bytes)?;
         // Write to file so windows can safely load it as a resource
         // TODO: Some true random name?
-        let fname = format!("{}.{}", "_temp", meta.get_extension());
+        let fname = format!("{}.{}", "_temp", meta.extension());
         let fname16 = utf8_to_utf16(&fname);
         // Scope the write so the file gets closed
         file_write_bytes(&fname, bytes).map_err(|e| Error::IoError(e))?;
@@ -106,13 +106,13 @@ impl Win32Font {
         })
     }
 
-    pub fn get_face_names(&self) -> &[String] {
-        self.meta.get_face_names()
+    pub fn face_names(&self) -> &[String] {
+        self.meta.face_names()
     }
 
-    pub fn get_face(&self, name: &str) -> Result<Win32FontFace> {
+    pub fn face(&self, name: &str) -> Result<Win32FontFace> {
         // TODO: Some fuzzy match? Substring match?
-        if !self.get_face_names().iter().any(|n| n == name) {
+        if !self.face_names().iter().any(|n| n == name) {
             // No such face
             return Err(Error::UserError(format!("No face named '{}' found in font!", name)));
         }
@@ -237,7 +237,7 @@ impl Win32ScaledFontFace {
         Ok(())
     }
 
-    fn get_tightest_bounds(&self) -> Bounds {
+    fn tightest_bounds(&self) -> Bounds {
         let mut result = Bounds::default();
 
         // Find left bound
@@ -320,7 +320,7 @@ impl Win32ScaledFontFace {
             }
         }
         // Calculate the tightest bounds
-        let bounds = self.get_tightest_bounds();
+        let bounds = self.tightest_bounds();
         if bounds.left > bounds.right {
             // The canvas must be empty, return empty canvas
             return Ok(RasterizedGlyph{

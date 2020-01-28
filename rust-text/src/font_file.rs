@@ -16,7 +16,7 @@ impl FontFile {
     pub(crate) fn from_bytes(bytes: &[u8]) -> Result<Self> {
         // Try TTF
         if let Ok(ttf) = TtfFile::parse(bytes) {
-            if let Some(names) = ttf.get_name(4) {
+            if let Some(names) = ttf.name(4) {
                 return Ok(Self{
                     extension: "ttf".into(),
                     face_names: names.iter().cloned().collect(),
@@ -27,12 +27,12 @@ impl FontFile {
     }
 
     /// Returns the appropriate extension name for this font type.
-    pub(crate) fn get_extension(&self) -> &str {
+    pub(crate) fn extension(&self) -> &str {
         &self.extension
     }
 
     /// Returns the font face names stored in this font.
-    pub(crate) fn get_face_names(&self) -> &[String] {
+    pub(crate) fn face_names(&self) -> &[String] {
         &self.face_names
     }
 }

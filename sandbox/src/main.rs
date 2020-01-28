@@ -9,11 +9,11 @@ fn main() {
 
     let f = rt::Font::from_bytes(&bytes).expect("couldn't load font");
 
-    for face in f.get_face_names() {
+    for face in f.face_names() {
         println!("Face: {}", face);
     }
 
-    let f0 = f.get_face(&*f.get_face_names()[0]).expect("couldn't load face from font");
+    let f0 = f.face(&*f.face_names()[0]).expect("couldn't load face from font");
     let mut sf = f0.scale(24.0, 96.0).expect("couldn't scale font");
 
     let text = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,:;!?-+=";

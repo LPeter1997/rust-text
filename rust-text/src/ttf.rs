@@ -106,7 +106,7 @@ impl TtfFile {
     }
 
     /// Returns the entries with the given NameID from the 'name' table.
-    pub(crate) fn get_name(&self, id: u16) -> Option<&HashSet<String>> {
+    pub(crate) fn name(&self, id: u16) -> Option<&HashSet<String>> {
         self.names.get(&id)
     }
 }
