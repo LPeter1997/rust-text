@@ -62,8 +62,8 @@ impl ScaledFontFace {
     }
 
     /// Shapes the passed in text to get laied out in the plane for rendering.
-    pub fn shape_text<F: FnMut(GlyphPositioning)>(&self, text: &str, f: F) -> (i32, i32) {
-        self.0.shape_text(text, f)
+    pub fn shape_text<F: FnMut(GlyphPositioning)>(&self, text: &str, options: ShapeOptions, f: F) -> (i32, i32) {
+        self.0.shape_text(text, options, f)
     }
 }
 
@@ -97,4 +97,53 @@ pub struct GlyphPositioning {
     pub caret_x: i32,
     /// The caret's y position before this character.
     pub caret_y: i32,
+}
+
+/// Contains options for shaping text.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct ShapeOptions(u8);
+
+impl ShapeOptions {
+    /// Use kerning when calculating coordienates, meaning that spacing is
+    /// adjusted between characters for more natural reading.
+    pub const USE_KERNING: ShapeOptions = ShapeOptions(0b00000001);
+
+    /// Returns true if a given option (or options) is present in the options.
+    pub fn contains(&self, option: ShapeOptions) -> bool {
+        (*self & option) == option
+    }
+}
+
+use std::ops::{BitOr, BitOrAssign, BitAnd, BitAndAssign, BitXor, BitXorAssign, Not};
+
+impl BitOr for ShapeOptions {
+    type Output = Self;
+    fn bitor(self, rhs: Self) -> Self::Output { Self(self.0 | rhs.0) }
+}
+
+impl BitOrAssign for ShapeOptions {
+    fn bitor_assign(&mut self, rhs: Self) { self.0 |= rhs.0; }
+}
+
+impl BitAnd for ShapeOptions {
+    type Output = Self;
+    fn bitand(self, rhs: Self) -> Self::Output { Self(self.0 & rhs.0) }
+}
+
+impl BitAndAssign for ShapeOptions {
+    fn bitand_assign(&mut self, rhs: Self) { self.0 &= rhs.0; }
+}
+
+impl BitXor for ShapeOptions {
+    type Output = Self;
+    fn bitxor(self, rhs: Self) -> Self::Output { Self(self.0 ^ rhs.0) }
+}
+
+impl BitXorAssign for ShapeOptions {
+    fn bitxor_assign(&mut self, rhs: Self) { self.0 ^= rhs.0; }
+}
+
+impl Not for ShapeOptions {
+    type Output = Self;
+    fn not(self) -> Self::Output { Self(!self.0) }
 }

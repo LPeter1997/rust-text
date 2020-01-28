@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use rust_text as rt;
 
 fn main() {
-    let file = File::open("Hack-Regular.ttf").expect("couldn't find font file");
+    let file = File::open("Arial.ttf").expect("couldn't find font file");
     let bytes = file.bytes().map(|b| b.unwrap()).collect::<Vec<_>>().into_boxed_slice();
 
     let f = rt::Font::from_bytes(&bytes).expect("couldn't load font");
@@ -32,7 +32,9 @@ fn main() {
     }
     glyphs.insert('_', sf.rasterize_glyph('_').expect("Failed to render glyph!"));
 
-    let (mut w, mut h) = sf.shape_text(text, |_| {});
+    let options = rt::ShapeOptions::USE_KERNING;
+
+    let (mut w, mut h) = sf.shape_text(text, options, |_| {});
     let text_height = h;
     w += 50;
     h += h * text_len as i32;
@@ -53,14 +55,14 @@ fn main() {
     };
 
     let mut yoff = 0;
-    sf.shape_text(text, |p| {
+    sf.shape_text(text, options, |p| {
         let glyph = glyphs.get(&p.character).unwrap();
         blit(p.x + glyph.x_offset, p.y + glyph.y_offset + yoff, glyph);
     });
 
     for i in 0..text_len {
         yoff += text_height;
-        sf.shape_text(text, |p| {
+        sf.shape_text(text, options, |p| {
             let glyph = glyphs.get(&p.character).unwrap();
             blit(p.x + glyph.x_offset, p.y + glyph.y_offset + yoff, glyph);
 

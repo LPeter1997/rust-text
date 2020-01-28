@@ -183,6 +183,7 @@ pub const FF_DONTCARE        : DWORD    = 0;
 pub const DIB_RGB_COLORS     : UINT     = 0;
 pub const BI_RGB             : DWORD    = 0;
 pub const FR_PRIVATE         : DWORD    = 0x10;
+pub const GCP_USEKERNING     : DWORD    = 0x0008;
 
 // https://docs.microsoft.com/en-us/previous-versions/dd145106(v=vs.85)
 #[repr(C)]

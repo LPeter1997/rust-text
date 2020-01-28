@@ -5,10 +5,9 @@
 
 use std::io::prelude::*;
 use std::fs::File;
-use crate::{RasterizedGlyph, GlyphPositioning};
+use crate::{RasterizedGlyph, GlyphPositioning, ShapeOptions, Result, Error};
 use crate::font_file::FontFile;
 use crate::winapi::*;
-use crate::{Result, Error};
 
 /// UTF-8 to UTF-16 conversion.
 fn utf8_to_utf16(s: &str) -> Box<[WCHAR]> {
@@ -355,10 +354,20 @@ impl Win32ScaledFontFace {
         })
     }
 
-    pub fn shape_text<F: FnMut(GlyphPositioning)>(&self, text: &str, mut f: F) -> (i32, i32) {
+    fn translate_flags(flags: ShapeOptions) -> DWORD {
+        let mut result: DWORD = 0;
+        if flags.contains(ShapeOptions::USE_KERNING) {
+            result |= GCP_USEKERNING;
+        }
+        result
+    }
+
+    pub fn shape_text<F: FnMut(GlyphPositioning)>(&self, text: &str, options: ShapeOptions, mut f: F) -> (i32, i32) {
         // Encode in UTF16
         let text16 = utf8_to_utf16(text);
-        // Calculate offsets
+        // Prepare parameters
+        let flags = Self::translate_flags(options);
+        println!("Flags {:?}", flags);
         let mut results = GCP_RESULTSW::new();
         let mut glyphs = vec![0i16; text16.len()].into_boxed_slice();
         let mut dx = vec![0i32; text16.len()].into_boxed_slice();
@@ -369,8 +378,9 @@ impl Win32ScaledFontFace {
         results.lpDx = dx.as_mut_ptr();
         results.lpOrder = order.as_mut_ptr();
         results.lpCaretPos = caret_pos.as_mut_ptr();
+        // Invoke placement calculation
         let res = unsafe{ GetCharacterPlacementW(self.dc.0,
-            text16.as_ptr(), text.len() as INT, 0, &mut results, 0) };
+            text16.as_ptr(), text.len() as INT, 0, &mut results, flags) };
         // The resulting dimensions
         let _res_w = (res & 0x0000ffff) as usize;
         let res_h = ((res & 0xffff0000) >> 16) as usize;
@@ -391,7 +401,7 @@ impl Win32ScaledFontFace {
             // Get the advance width
             let order = unsafe{ *results.lpOrder.offset(i as isize) };
             let offs = unsafe{ *results.lpDx.offset(order as isize) };
-            let mut caret_offs = unsafe{ *results.lpCaretPos.offset(order as isize) };
+            let caret_offs = unsafe{ *results.lpCaretPos.offset(order as isize) };
             if let Some(ch) = chs.next() {
                 if prev_newline {
                     caret_neg = caret_offs;
