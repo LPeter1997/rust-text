@@ -324,6 +324,7 @@ impl Win32ScaledFontFace {
         if bounds.left > bounds.right {
             // The canvas must be empty, return empty canvas
             return Ok(RasterizedGlyph{
+                character: codepoint,
                 x_offset: 0,
                 y_offset: 0,
                 width: 0,
@@ -346,6 +347,7 @@ impl Win32ScaledFontFace {
         }
         // We succeeded
         Ok(RasterizedGlyph{
+            character: codepoint,
             x_offset: bounds.left as i32,
             y_offset: bounds.top as i32,
             width: bounds_width,

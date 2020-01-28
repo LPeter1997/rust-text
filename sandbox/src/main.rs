@@ -14,16 +14,9 @@ fn main() {
     }
 
     let f0 = f.get_face(&*f.get_face_names()[0]).expect("couldn't load face from font");
-    let mut sf = f0.scale(16.0, 96.0).expect("couldn't scale font");
+    let mut sf = f0.scale(24.0, 96.0).expect("couldn't scale font");
 
-    /*
-    let ch1 = sf.rasterize_glyph('A').expect("couldn't render glyph");
-    image::save_buffer("image1.png", &ch1.data, ch1.width as u32, ch1.height as u32, image::Gray(8)).expect("failed to write image");
-    let ch2 = sf.rasterize_glyph('$').expect("couldn't render glyph");
-    image::save_buffer("image2.png", &ch2.data, ch2.width as u32, ch2.height as u32, image::Gray(8)).expect("failed to write image");
-    */
-
-    let text = "Hello, World!\nBye World!";
+    let text = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,:;!?-+=";
     let text_len = text.chars().count();
 
     let mut glyphs = HashMap::new();
@@ -32,12 +25,9 @@ fn main() {
     }
     glyphs.insert('_', sf.rasterize_glyph('_').expect("Failed to render glyph!"));
 
-    let options = rt::ShapeOptions::USE_KERNING;
-
-    let (mut w, mut h) = sf.shape_text(text, options, |_| {});
-    let text_height = h;
-    w += 50;
-    h += h * text_len as i32;
+    let pack = rt::pack_glyphs(glyphs.values());
+    let w = pack.width as i32;
+    let h = pack.height as i32;
     let mut buff = vec![0u8; (w * h).abs() as usize];
 
     let mut blit = |x0: i32, y0: i32, rg: &rt::RasterizedGlyph| {
@@ -54,23 +44,9 @@ fn main() {
         }
     };
 
-    let mut yoff = 0;
-    sf.shape_text(text, options, |p| {
-        let glyph = glyphs.get(&p.character).unwrap();
-        blit(p.x + glyph.x_offset, p.y + glyph.y_offset + yoff, glyph);
-    });
-
-    for i in 0..text_len {
-        yoff += text_height;
-        sf.shape_text(text, options, |p| {
-            let glyph = glyphs.get(&p.character).unwrap();
-            blit(p.x + glyph.x_offset, p.y + glyph.y_offset + yoff, glyph);
-
-            if i == p.index {
-                let glyph = glyphs.get(&'_').unwrap();
-                blit(p.caret_x + glyph.x_offset, p.caret_y + glyph.y_offset + yoff, glyph);
-            }
-        });
+    for (c, rect) in pack.items {
+        let g = glyphs.get(&c).unwrap();
+        blit(rect.x as i32, rect.y as i32, g);
     }
 
     image::save_buffer("out.png", &buff, w as u32, h as u32, image::Gray(8)).expect("failed to write image");

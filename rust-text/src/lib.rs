@@ -5,9 +5,14 @@ mod ttf;
 mod font_file;
 mod winapi;
 mod win32;
+mod pack;
+use std::ops::{BitOr, BitOrAssign, BitAnd, BitAndAssign, BitXor, BitXorAssign, Not};
+use pack::PackResult;
 
 pub use error::Error;
 pub type Result<T> = std::result::Result<T, Error>;
+pub use pack::Rect;
+pub type GlyphPack = PackResult<char>;
 
 // Import underlying types.
 #[cfg(target_os = "windows")]
@@ -69,6 +74,8 @@ impl ScaledFontFace {
 
 /// Represents a glyph that has been rasterized into a byte array.
 pub struct RasterizedGlyph {
+    /// The character that got rasterized.
+    pub character: char,
     /// Horizontal offset to add when rendering.
     pub x_offset: i32,
     /// Vertical offset to add when rendering.
@@ -114,8 +121,6 @@ impl ShapeOptions {
     }
 }
 
-use std::ops::{BitOr, BitOrAssign, BitAnd, BitAndAssign, BitXor, BitXorAssign, Not};
-
 impl BitOr for ShapeOptions {
     type Output = Self;
     fn bitor(self, rhs: Self) -> Self::Output { Self(self.0 | rhs.0) }
@@ -146,4 +151,12 @@ impl BitXorAssign for ShapeOptions {
 impl Not for ShapeOptions {
     type Output = Self;
     fn not(self) -> Self::Output { Self(!self.0) }
+}
+
+/// Packs the glyphs with a best-effort algorithm to occupy the least amount of
+/// space possible.
+pub fn pack_glyphs<'a>(glyphs: impl IntoIterator<Item = &'a RasterizedGlyph>) -> GlyphPack {
+    use std::cmp::max;
+    pack::bin_pack(glyphs.into_iter(),
+        |e| (e.width, e.height), |(w1, h1), (w2, h2)| max(w1, h1).cmp(max(w2, h2)), |e| e.character)
 }
